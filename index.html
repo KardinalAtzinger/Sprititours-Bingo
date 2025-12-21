@@ -54,6 +54,31 @@
       .table{width:100%;border-collapse:collapse}
       .table td{padding:10px 6px;border-top:1px solid var(--border);vertical-align:middle}
       .right{text-align:right}
+      /* iOS-sicheres Modal (statt <dialog>) */
+.bbOverlay{
+  position:fixed; inset:0; background:#0008;
+  display:flex; align-items:center; justify-content:center;
+  padding:12px; z-index:9999;
+}
+.bbModal{
+  width:min(420px, 100%);
+  max-height:85vh;
+  background:#0b1220;
+  border:1px solid var(--border);
+  border-radius:16px;
+  display:flex;
+  flex-direction:column;
+}
+.bbModalHead{ padding:16px 16px 0; }
+.bbModalBody{ padding:16px; overflow:auto; }
+.bbModalFoot{
+  padding:12px 16px;
+  border-top:1px solid var(--border);
+  background:#0b1220;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
     </style>
 
     <!-- QR Code generator (no install) -->
