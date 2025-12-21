@@ -7,101 +7,767 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#0b1220" />
     <style>
-      :root { --bg:#0b1220; --card:#ffffff10; --card2:#22c55e2e; --border:#ffffff1f; --border2:#22c55e73; --txt:#fff; --muted:#ffffffb3; }
+      :root{
+        --bg:#0b1220; --txt:#fff; --muted:rgba(255,255,255,.72);
+        --card:rgba(255,255,255,.06); --border:rgba(255,255,255,.12);
+        --good:rgba(34,197,94,.20); --goodb:rgba(34,197,94,.55);
+        --bad:rgba(239,68,68,.20); --badb:rgba(239,68,68,.55);
+        --btn:rgba(255,255,255,.10); --btnb:rgba(255,255,255,.18);
+      }
       *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
       body{margin:0;background:var(--bg);color:var(--txt)}
-      header{padding:18px 18px 10px}
-      h1{margin:0;font-size:28px}
+      header{padding:18px 18px 10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+      h1{margin:0;font-size:28px;font-weight:900}
       .sub{margin-top:6px;color:var(--muted);font-size:14px}
-      .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px 18px 18px}
-      .cell{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:14px;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;user-select:none}
-      .cell.done{border-color:var(--border2);background:var(--card2)}
+      .pill{border:1px solid var(--btnb);background:var(--btn);padding:10px 12px;border-radius:14px;color:#fff;cursor:pointer;font-weight:800}
+      .wrap{padding:12px 18px 18px}
+      .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+      .cell{
+        border:1px solid var(--border); background:var(--card); border-radius:16px;
+        padding:14px; min-height:120px; display:flex; flex-direction:column; justify-content:space-between;
+        cursor:pointer; user-select:none;
+      }
+      .cell.done{border-color:var(--goodb);background:var(--good)}
       .emoji{font-size:28px}
-      .name{font-size:18px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .name{font-size:18px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .hint{color:var(--muted);font-size:12px}
-      footer{padding:0 18px 18px;display:flex;gap:10px;align-items:center}
-      button{border:1px solid #ef444473;background:#ef44442e;color:white;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
-      .small{color:var(--muted);font-size:12px}
-      dialog{border:none;border-radius:14px;padding:16px;max-width:320px}
+      .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .btn{
+        border:1px solid var(--btnb); background:var(--btn); color:#fff; border-radius:12px;
+        padding:10px 14px; font-weight:800; cursor:pointer;
+      }
+      .btn.danger{border-color:var(--badb);background:var(--bad)}
+      .card{
+        border:1px solid var(--border); background:var(--card); border-radius:16px; padding:14px;
+      }
+      input{
+        width:100%; padding:12px 12px; border-radius:12px; border:1px solid var(--border);
+        background:rgba(0,0,0,.22); color:#fff; outline:none;
+      }
+      label{display:block;color:var(--muted);font-size:12px;margin:10px 0 6px}
+      hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+      dialog{border:none;border-radius:16px;padding:16px;max-width:360px;width:calc(100% - 24px)}
       dialog::backdrop{background:#0008}
+      .dlgTitle{margin:0 0 6px;font-size:18px;font-weight:900}
+      .small{color:var(--muted);font-size:12px;line-height:1.35}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+      .table{width:100%;border-collapse:collapse}
+      .table td{padding:10px 6px;border-top:1px solid var(--border);vertical-align:middle}
+      .right{text-align:right}
     </style>
+
+    <!-- QR Code generator (no install) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   </head>
+
   <body>
     <header>
-      <h1>Bier-Bingo</h1>
-      <div class="sub" id="status">0/10 erledigt</div>
+      <div>
+        <h1>Bier-Bingo</h1>
+        <div class="sub" id="status">—</div>
+      </div>
+      <div class="row">
+        <button class="pill" id="navBoard">Board</button>
+        <button class="pill" id="navConfirm">Bestätigen</button>
+        <button class="pill" id="navLeaderboard">Rangliste</button>
+        <button class="pill" id="navSettings">Setup</button>
+      </div>
     </header>
 
-    <main class="grid" id="grid"></main>
+    <div class="wrap" id="view"></div>
 
-    <footer>
-      <button id="reset">Reset</button>
-      <div class="small">Tippen = Feld freischalten. Wird lokal gespeichert.</div>
-    </footer>
+    <!-- Dialogs -->
+    <dialog id="dlgBingo">
+      <h3 class="dlgTitle">BINGO! 🍻🔥</h3>
+      <div style="color:#222;margin-bottom:12px">Du hast alle Kumpels besucht!</div>
+      <button class="btn" id="closeBingo" style="background:#0b1220;border-color:#0b1220">Nice</button>
+    </dialog>
 
-    <dialog id="bingo">
-      <h3 style="margin:0 0 6px">BINGO! 🍻🔥</h3>
-      <div style="color:#333; margin-bottom:12px">Du hast alle Kumpels besucht!</div>
-      <button id="closeBingo" style="border-color:#0b1220;background:#0b1220">Nice</button>
+    <dialog id="dlgAction">
+      <h3 class="dlgTitle" id="actTitle">Feld</h3>
+      <div class="small" id="actBody"></div>
+      <hr />
+      <div class="row">
+        <button class="btn" id="actToggleLocal">Für mich umschalten</button>
+        <button class="btn" id="actRequestHost">Gastgeber bestätigen lassen</button>
+      </div>
+      <div class="small" style="margin-top:10px">
+        „Für mich umschalten“ nutzt deinen lokalen Stand. Für Wettbewerb & Rangliste am besten: Gastgeber bestätigen.
+      </div>
+      <hr />
+      <div class="row">
+        <button class="btn danger" id="actClose">Schließen</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlgRequest">
+      <h3 class="dlgTitle">Bestätigung anfordern</h3>
+      <div class="small">Zeig dem Gastgeber den QR-Code. Er bestätigt dann auf seinem Handy im Tab „Bestätigen“.</div>
+      <div id="qr" style="margin:12px auto 0; width:max-content; background:#fff; padding:10px; border-radius:12px;"></div>
+      <div class="small" style="margin-top:10px">
+        Alternativ: gib diesen Code weiter:
+        <div class="mono" id="reqCode" style="margin-top:6px; word-break:break-all"></div>
+      </div>
+      <hr />
+      <button class="btn danger" id="reqClose">Schließen</button>
     </dialog>
 
     <script>
-      const KEY = "bier_bingo_pwa_v1";
+      /********************
+       * CONFIG (set yours)
+       ********************/
+      // TODO: paste your Supabase Project URL + anon key here
+      const SUPABASE_URL = "https://hyjydhxamcbeytlvzdnd.supabase.co";
+      const SUPABASE_ANON_KEY = "sb_publishable_zASMa14T4TduXXR3MDaq6g_XrfmsFdx";
+      const TABLE = "bier_bingo_rooms";
+
+      /********************
+       * Local constants
+       ********************/
+      const LOCAL_KEY = "bier_bingo_pwa_v2";
       const DEFAULT_FRIENDS = ["Max","Ben","Lukas","Timo","Jonas","Paul","Moritz","Nico","Flo","Chris"];
 
-      const state = (() => {
-        try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
-      })();
-
-      const friends = state.friends?.length === 10 ? state.friends : DEFAULT_FRIENDS;
-      const checked = state.checked || {}; // {idx:true}
-
-      const grid = document.getElementById("grid");
-      const status = document.getElementById("status");
-      const dlg = document.getElementById("bingo");
-
-      function save() {
-        localStorage.setItem(KEY, JSON.stringify({ friends, checked }));
+      // simple pseudo-uuid (no deps)
+      function uid() {
+        return (crypto?.randomUUID?.() || ("u_" + Math.random().toString(16).slice(2) + Date.now().toString(16)));
       }
 
-      function doneCount() {
-        return friends.reduce((acc, _, i) => acc + (checked[i] ? 1 : 0), 0);
+      function nowIso(){ return new Date().toISOString(); }
+
+      function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+      /********************
+       * Storage & State
+       ********************/
+      const local = (() => {
+        try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch { return {}; }
+      })();
+
+      const app = {
+        me: {
+          playerId: local.me?.playerId || uid(),
+          name: local.me?.name || "",
+        },
+        roomId: local.roomId || "",      // group code
+        friends: Array.isArray(local.friends) && local.friends.length === 10 ? local.friends : DEFAULT_FRIENDS,
+        pins: Array.isArray(local.pins) && local.pins.length === 10 ? local.pins : Array(10).fill("1234"), // host pins per friend
+        checkedLocal: local.checkedLocal || {}, // fallback local toggles (if you don't use host confirmation)
+        // cloud snapshot
+        cloud: {
+          state: null,      // room.state JSON
+          updated_at: null,
+        },
+        ui: {
+          view: "board",
+          activeIndex: null,
+        }
+      };
+
+      function saveLocal() {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify({
+          me: app.me,
+          roomId: app.roomId,
+          friends: app.friends,
+          pins: app.pins,
+          checkedLocal: app.checkedLocal
+        }));
+      }
+
+      /********************
+       * Supabase REST helpers (no installs)
+       ********************/
+      function sbHeaders() {
+        return {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json"
+        };
+      }
+
+      function assertSupabaseConfigured() {
+        return SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PASTE_") &&
+               SUPABASE_ANON_KEY.length > 20 && !SUPABASE_ANON_KEY.includes("PASTE_");
+      }
+
+      async function sbSelectRoom(roomId) {
+        const url = `${SUPABASE_URL}/rest/v1/${TABLE}?room_id=eq.${encodeURIComponent(roomId)}&select=room_id,state,updated_at`;
+        const res = await fetch(url, { headers: sbHeaders() });
+        if (!res.ok) throw new Error("Supabase select failed");
+        const rows = await res.json();
+        return rows[0] || null;
+      }
+
+      async function sbUpsertRoom(roomId, state) {
+        const url = `${SUPABASE_URL}/rest/v1/${TABLE}`;
+        const body = JSON.stringify([{ room_id: roomId, state, updated_at: nowIso() }]);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { ...sbHeaders(), "Prefer":"resolution=merge-duplicates,return=representation" },
+          body
+        });
+        if (!res.ok) throw new Error("Supabase upsert failed");
+        const rows = await res.json();
+        return rows[0] || null;
+      }
+
+      async function sbPatchRoom(roomId, state) {
+        const url = `${SUPABASE_URL}/rest/v1/${TABLE}?room_id=eq.${encodeURIComponent(roomId)}`;
+        const body = JSON.stringify({ state, updated_at: nowIso() });
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: { ...sbHeaders(), "Prefer":"return=representation" },
+          body
+        });
+        if (!res.ok) throw new Error("Supabase patch failed");
+        const rows = await res.json();
+        return rows[0] || null;
+      }
+
+      /********************
+       * Cloud state shape
+       ********************
+       state = {
+         friends: [10 names],            // shared list
+         players: {
+           [playerId]: { name, checked: { [idx]: true }, updated_at }
+         }
+       }
+       ********************/
+      function emptyRoomState() {
+        return {
+          friends: app.friends.slice(),
+          players: {}
+        };
+      }
+
+      function ensureMyPlayer(state) {
+        state.players = state.players || {};
+        if (!state.players[app.me.playerId]) {
+          state.players[app.me.playerId] = { name: app.me.name || "Unbenannt", checked: {}, updated_at: nowIso() };
+        } else {
+          // update name if changed
+          state.players[app.me.playerId].name = app.me.name || state.players[app.me.playerId].name || "Unbenannt";
+        }
+        return state;
+      }
+
+      function myCheckedFromCloud() {
+        const st = app.cloud.state;
+        const me = st?.players?.[app.me.playerId];
+        return me?.checked || null;
+      }
+
+      function getDoneCount(checkedObj) {
+        let c = 0;
+        for (let i = 0; i < 10; i++) if (checkedObj?.[i]) c++;
+        return c;
+      }
+
+      /********************
+       * Sync loop (polling)
+       ********************/
+      let syncTimer = null;
+
+      async function syncOnce() {
+        if (!assertSupabaseConfigured()) return;
+
+        if (!app.roomId) return;
+
+        let row = await sbSelectRoom(app.roomId);
+
+        // create if missing
+        if (!row) {
+          const st = ensureMyPlayer(emptyRoomState());
+          st.friends = app.friends.slice();
+          row = await sbUpsertRoom(app.roomId, st);
+        }
+
+        app.cloud.state = row.state || emptyRoomState();
+        app.cloud.updated_at = row.updated_at || null;
+
+        // keep local friends aligned with room friends (shared)
+        if (Array.isArray(app.cloud.state.friends) && app.cloud.state.friends.length === 10) {
+          app.friends = app.cloud.state.friends.slice();
+        }
+
+        // ensure me exists (name)
+        app.cloud.state = ensureMyPlayer(app.cloud.state);
+
+        // if me missing (because we just ensured), persist it
+        await sbPatchRoom(app.roomId, app.cloud.state);
+
+        render();
+      }
+
+      async function startSync() {
+        if (syncTimer) clearInterval(syncTimer);
+        await syncOnce();
+        syncTimer = setInterval(() => {
+          syncOnce().catch(()=>{});
+        }, 3000);
+      }
+
+      /********************
+       * Actions
+       ********************/
+      async function updateFriendsShared(newFriends) {
+        app.friends = newFriends.slice();
+        saveLocal();
+        if (!assertSupabaseConfigured() || !app.roomId) { render(); return; }
+        const st = app.cloud.state || emptyRoomState();
+        st.friends = newFriends.slice();
+        // keep pins local-only
+        await sbPatchRoom(app.roomId, st);
+        await syncOnce();
+      }
+
+      // Local toggle (fallback)
+      function toggleLocal(idx) {
+        app.checkedLocal[idx] = !app.checkedLocal[idx];
+        saveLocal();
+        render();
+        if (getDoneCount(app.checkedLocal) === 10) document.getElementById("dlgBingo").showModal();
+      }
+
+      // Host-confirmed completion: host updates visitor player's checked in cloud
+      async function hostConfirm(visitorPlayerId, idx) {
+        if (!assertSupabaseConfigured() || !app.roomId) throw new Error("No cloud");
+        const st = app.cloud.state || emptyRoomState();
+        st.players = st.players || {};
+        st.players[visitorPlayerId] = st.players[visitorPlayerId] || { name: "Unbekannt", checked: {}, updated_at: nowIso() };
+        st.players[visitorPlayerId].checked = st.players[visitorPlayerId].checked || {};
+        st.players[visitorPlayerId].checked[idx] = true;
+        st.players[visitorPlayerId].updated_at = nowIso();
+        await sbPatchRoom(app.roomId, st);
+        await syncOnce();
+      }
+
+      function currentCheckedForMe() {
+        // prefer cloud if configured + roomId set
+        const cloud = myCheckedFromCloud();
+        if (cloud) return cloud;
+        return app.checkedLocal;
+      }
+
+      /********************
+       * Views
+       ********************/
+      const viewEl = document.getElementById("view");
+      const statusEl = document.getElementById("status");
+
+      function setView(v) {
+        app.ui.view = v;
+        render();
+      }
+
+      function renderBoard() {
+        const checked = currentCheckedForMe();
+        const done = getDoneCount(checked);
+        const bingo = done === 10;
+
+        statusEl.textContent =
+          `${done}/10 erledigt` +
+          (app.roomId ? ` • Room: ${app.roomId}` : " • (kein Room)") +
+          (bingo ? " — BINGO! 🎉" : "");
+
+        const grid = document.createElement("div");
+        grid.className = "grid";
+
+        for (let i = 0; i < 10; i++) {
+          const cell = document.createElement("div");
+          cell.className = "cell" + (checked?.[i] ? " done" : "");
+          cell.innerHTML = `
+            <div class="emoji">${checked?.[i] ? "🍺" : "🔥"}</div>
+            <div class="name">${app.friends[i]}</div>
+            <div class="hint">${checked?.[i] ? "Erledigt (bestätigt)" : "Grillen + Bier"}</div>
+          `;
+          cell.onclick = () => openActionDialog(i);
+          grid.appendChild(cell);
+        }
+
+        const box = document.createElement("div");
+        box.className = "card";
+        box.innerHTML = `
+          <div style="font-weight:900">So nutzt ihr’s am besten</div>
+          <div class="small" style="margin-top:6px">
+            Für eine Rangliste & fairen Wettbewerb: erst <b>Setup</b> machen (Name + Room-Code),
+            dann bei jedem Besuch den Gastgeber in <b>Bestätigen</b> bestätigen lassen.
+          </div>
+        `;
+
+        viewEl.innerHTML = "";
+        viewEl.appendChild(grid);
+        viewEl.appendChild(box);
+
+        if (bingo) document.getElementById("dlgBingo").showModal();
+      }
+
+      function renderSettings() {
+        statusEl.textContent = `Setup • ${app.roomId ? "Room: " + app.roomId : "kein Room"}`;
+
+        const html = document.createElement("div");
+        html.className = "card";
+        html.innerHTML = `
+          <div style="font-weight:900;font-size:18px">Setup</div>
+          <div class="small" style="margin-top:6px">
+            Ohne Installation: Code liegt auf GitHub/Vercel. Für gemeinsamen Stand nutzt ihr einen Room-Code.
+          </div>
+
+          <label>Dein Name (für Rangliste)</label>
+          <input id="meName" placeholder="z.B. Franz" value="${escapeHtml(app.me.name)}" />
+
+          <label>Room-Code (für eure 10er Gruppe)</label>
+          <input id="roomId" placeholder="z.B. jungs-sommer-2026" value="${escapeHtml(app.roomId)}" />
+
+          <div class="row" style="margin-top:12px">
+            <button class="btn" id="saveSetup">Speichern & Sync starten</button>
+            <button class="btn" id="editNames">Kumpel-Namen bearbeiten</button>
+          </div>
+
+          <hr />
+
+          <div style="font-weight:900">Gastgeber-PINs (pro Kumpel)</div>
+          <div class="small" style="margin-top:6px">
+            Jeder Kumpel kann auf seinem Handy seinen PIN einstellen. Der PIN bleibt <b>lokal</b> auf seinem Gerät.
+            Standard ist <span class="mono">1234</span>.
+          </div>
+
+          <div id="pins" style="margin-top:10px"></div>
+
+          <hr />
+
+          <div class="row">
+            <button class="btn danger" id="resetLocal">Lokalen Stand zurücksetzen</button>
+            <button class="btn danger" id="resetMe">Meinen Spieler zurücksetzen</button>
+          </div>
+
+          <div class="small" style="margin-top:10px">
+            Cloud-Stand (Room) bleibt bestehen. „Meinen Spieler zurücksetzen“ erzeugt eine neue Player-ID.
+          </div>
+        `;
+
+        viewEl.innerHTML = "";
+        viewEl.appendChild(html);
+
+        // pins list
+        const pinsEl = document.getElementById("pins");
+        const wrap = document.createElement("div");
+        wrap.className = "card";
+        wrap.style.background = "transparent";
+        wrap.style.border = "none";
+        wrap.style.padding = "0";
+
+        for (let i = 0; i < 10; i++) {
+          const row = document.createElement("div");
+          row.className = "row";
+          row.style.marginBottom = "10px";
+          row.innerHTML = `
+            <div style="flex:1;min-width:160px"><b>${escapeHtml(app.friends[i])}</b><div class="small">PIN für Gastgeber-Bestätigung</div></div>
+            <div style="width:110px">
+              <input inputmode="numeric" maxlength="8" id="pin_${i}" value="${escapeHtml(app.pins[i] || "1234")}" />
+            </div>
+          `;
+          wrap.appendChild(row);
+        }
+        pinsEl.appendChild(wrap);
+
+        document.getElementById("saveSetup").onclick = async () => {
+          app.me.name = document.getElementById("meName").value.trim();
+          app.roomId = document.getElementById("roomId").value.trim();
+          for (let i=0;i<10;i++){
+            app.pins[i] = (document.getElementById("pin_"+i).value.trim() || "1234");
+          }
+          saveLocal();
+
+          if (!assertSupabaseConfigured()) {
+            alert("Supabase ist noch nicht konfiguriert. Bitte SUPABASE_URL und SUPABASE_ANON_KEY im Code setzen.");
+            return;
+          }
+          if (!app.me.name) { alert("Bitte deinen Namen setzen (für Rangliste)."); return; }
+          if (!app.roomId) { alert("Bitte Room-Code setzen."); return; }
+
+          await startSync();
+          alert("Setup gespeichert. Sync läuft.");
+        };
+
+        document.getElementById("editNames").onclick = () => openNamesEditor();
+
+        document.getElementById("resetLocal").onclick = () => {
+          if (confirm("Lokalen Stand (Fallback) zurücksetzen?")) {
+            app.checkedLocal = {};
+            saveLocal(); render();
+          }
+        };
+
+        document.getElementById("resetMe").onclick = () => {
+          if (confirm("Deinen Spieler zurücksetzen (neue Player-ID)?")) {
+            app.me.playerId = uid();
+            saveLocal();
+            syncOnce().catch(()=>{});
+            render();
+          }
+        };
+      }
+
+      function renderConfirm() {
+        statusEl.textContent = "Bestätigen • Gastgeber-Modus";
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div style="font-weight:900;font-size:18px">Gastgeber bestätigt Besuch</div>
+          <div class="small" style="margin-top:6px">
+            Der Besucher zeigt dir einen QR-Code oder einen Code-Text. Du bestätigst dann mit deinem PIN.
+          </div>
+
+          <label>Besucher-Code (aus QR oder Text)</label>
+          <input id="visitorToken" placeholder="z.B. room|playerId|friendIndex|nonce" />
+
+          <label>Welcher Kumpel bin ich? (welches Feld bestätige ich)</label>
+          <select id="friendIdx" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(0,0,0,.22);color:#fff">
+            ${app.friends.map((n,i)=>`<option value="${i}">${escapeHtml(n)} (Feld ${i+1})</option>`).join("")}
+          </select>
+
+          <label>PIN</label>
+          <input id="pin" inputmode="numeric" placeholder="z.B. 1234" />
+
+          <div class="row" style="margin-top:12px">
+            <button class="btn" id="confirmBtn">Bestätigen</button>
+          </div>
+
+          <hr />
+          <div class="small">
+            Tipp: Den PIN pro Kumpel stellst du im Setup ein. Besucher müssen im Setup denselben Room-Code nutzen.
+          </div>
+        `;
+
+        viewEl.innerHTML = "";
+        viewEl.appendChild(card);
+
+        document.getElementById("confirmBtn").onclick = async () => {
+          const token = document.getElementById("visitorToken").value.trim();
+          const idx = Number(document.getElementById("friendIdx").value);
+          const pin = document.getElementById("pin").value.trim();
+
+          // parse token
+          const parsed = parseToken(token);
+          if (!parsed) { alert("Code ist ungültig."); return; }
+          if (!assertSupabaseConfigured()) { alert("Supabase nicht konfiguriert."); return; }
+          if (!app.roomId) { alert("Bitte Room-Code im Setup setzen."); return; }
+          if (parsed.roomId !== app.roomId) { alert("Room-Code passt nicht (Besucher ist in anderem Room)."); return; }
+
+          // pin check (host-side)
+          const expected = (app.pins[idx] || "1234");
+          if (pin !== expected) { alert("PIN falsch."); return; }
+
+          try {
+            await syncOnce(); // get latest
+            await hostConfirm(parsed.playerId, idx);
+            alert("Bestätigt ✅");
+          } catch (e) {
+            alert("Fehler beim Bestätigen. Checke WLAN/Room/Supabase.");
+          }
+        };
+      }
+
+      function renderLeaderboard() {
+        statusEl.textContent = "Rangliste • (aus Cloud)";
+
+        const st = app.cloud.state;
+        if (!st || !st.players) {
+          viewEl.innerHTML = `
+            <div class="card">
+              <div style="font-weight:900">Noch keine Cloud-Daten</div>
+              <div class="small" style="margin-top:6px">
+                Bitte Setup machen (Name + Room-Code) und Sync starten.
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        const rows = Object.entries(st.players).map(([pid, p]) => {
+          const done = getDoneCount(p.checked || {});
+          return { pid, name: p.name || "Unbenannt", done, updated_at: p.updated_at || "" };
+        }).sort((a,b) => b.done - a.done || a.name.localeCompare(b.name));
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div style="font-weight:900;font-size:18px">Rangliste</div>
+          <div class="small" style="margin-top:6px">Gemeinsamer Stand im Room <span class="mono">${escapeHtml(app.roomId || "—")}</span></div>
+          <hr />
+          <table class="table">
+            <tbody>
+              ${rows.map((r, i) => `
+                <tr>
+                  <td style="width:32px">${i+1}.</td>
+                  <td><b>${escapeHtml(r.name)}</b>${r.pid === app.me.playerId ? ' <span class="small">(du)</span>' : ''}</td>
+                  <td class="right"><b>${r.done}/10</b></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <hr />
+          <div class="row">
+            <button class="btn" id="refreshLb">Refresh</button>
+          </div>
+        `;
+
+        viewEl.innerHTML = "";
+        viewEl.appendChild(card);
+        document.getElementById("refreshLb").onclick = () => syncOnce().catch(()=>{});
+      }
+
+      /********************
+       * Dialogs & Editors
+       ********************/
+      const dlgAction = document.getElementById("dlgAction");
+      const dlgRequest = document.getElementById("dlgRequest");
+      const dlgBingo = document.getElementById("dlgBingo");
+
+      document.getElementById("closeBingo").onclick = () => dlgBingo.close();
+      document.getElementById("actClose").onclick = () => dlgAction.close();
+      document.getElementById("reqClose").onclick = () => {
+        // clear QR
+        document.getElementById("qr").innerHTML = "";
+        dlgRequest.close();
+      };
+
+      function openActionDialog(idx) {
+        app.ui.activeIndex = idx;
+        const name = app.friends[idx];
+        const checked = currentCheckedForMe();
+        const isDone = !!checked?.[idx];
+
+        document.getElementById("actTitle").textContent = name;
+        document.getElementById("actBody").textContent = isDone
+          ? "Dieses Feld ist bei dir erledigt."
+          : "Besuch + Grillen + Bier. Du kannst lokal togglen oder den Gastgeber bestätigen lassen.";
+
+        document.getElementById("actToggleLocal").onclick = () => {
+          toggleLocal(idx);
+          dlgAction.close();
+        };
+
+        document.getElementById("actRequestHost").onclick = () => {
+          dlgAction.close();
+          openRequestDialog(idx);
+        };
+
+        dlgAction.showModal();
+      }
+
+      function makeToken(roomId, playerId, idx) {
+        // add nonce so the code looks different each time
+        const nonce = Math.random().toString(16).slice(2, 10);
+        return `${roomId}|${playerId}|${idx}|${nonce}`;
+      }
+
+      function parseToken(token) {
+        const parts = token.split("|");
+        if (parts.length < 4) return null;
+        return { roomId: parts[0], playerId: parts[1], idx: Number(parts[2]), nonce: parts[3] };
+      }
+
+      function openRequestDialog(idx) {
+        if (!app.roomId) {
+          alert("Bitte erst Setup machen und einen Room-Code setzen.");
+          setView("settings");
+          return;
+        }
+        if (!app.me.name) {
+          alert("Bitte erst deinen Namen im Setup setzen.");
+          setView("settings");
+          return;
+        }
+
+        const token = makeToken(app.roomId, app.me.playerId, idx);
+
+        // QR
+        const qrEl = document.getElementById("qr");
+        qrEl.innerHTML = "";
+        new QRCode(qrEl, { text: token, width: 220, height: 220 });
+
+        document.getElementById("reqCode").textContent = token;
+
+        dlgRequest.showModal();
+      }
+
+      function openNamesEditor() {
+        const d = document.createElement("dialog");
+        d.innerHTML = `
+          <h3 class="dlgTitle">Kumpel-Namen bearbeiten</h3>
+          <div class="small">Die 10 Felder sind euer gemeinsames Layout (wird im Room geteilt).</div>
+          <hr />
+          <div id="inputs"></div>
+          <hr />
+          <div class="row">
+            <button class="btn" id="saveNames">Speichern</button>
+            <button class="btn danger" id="cancelNames">Abbrechen</button>
+          </div>
+        `;
+        document.body.appendChild(d);
+
+        const inputs = d.querySelector("#inputs");
+        for (let i=0;i<10;i++){
+          const w = document.createElement("div");
+          w.innerHTML = `
+            <label>Feld ${i+1}</label>
+            <input id="n_${i}" value="${escapeHtml(app.friends[i])}" />
+          `;
+          inputs.appendChild(w);
+        }
+
+        d.querySelector("#cancelNames").onclick = () => { d.close(); d.remove(); };
+        d.querySelector("#saveNames").onclick = async () => {
+          const newFriends = [];
+          for (let i=0;i<10;i++){
+            newFriends.push((d.querySelector("#n_"+i).value || "").trim() || `Kumpel ${i+1}`);
+          }
+          try {
+            await updateFriendsShared(newFriends);
+          } catch {
+            // even if cloud fails, keep local
+            app.friends = newFriends;
+            saveLocal();
+          }
+          d.close(); d.remove();
+        };
+
+        d.showModal();
+      }
+
+      /********************
+       * Router & render
+       ********************/
+      function escapeHtml(s){
+        return String(s || "").replace(/[&<>"']/g, (c) => ({
+          "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+        }[c]));
       }
 
       function render() {
-        grid.innerHTML = "";
-        friends.forEach((name, i) => {
-          const cell = document.createElement("div");
-          cell.className = "cell" + (checked[i] ? " done" : "");
-          cell.innerHTML = `
-            <div class="emoji">${checked[i] ? "🍺" : "🔥"}</div>
-            <div class="name">${name}</div>
-            <div class="hint">${checked[i] ? "Erledigt" : "Grillen + Bier"}</div>
-          `;
-          cell.onclick = () => {
-            checked[i] = !checked[i];
-            save();
-            render();
-            if (doneCount() === 10) dlg.showModal();
-          };
-          grid.appendChild(cell);
-        });
-        status.textContent = `${doneCount()}/10 erledigt` + (doneCount()===10 ? " — BINGO! 🎉" : "");
+        const v = app.ui.view;
+        if (v === "settings") return renderSettings();
+        if (v === "confirm") return renderConfirm();
+        if (v === "leaderboard") return renderLeaderboard();
+        return renderBoard();
       }
 
-      document.getElementById("reset").onclick = () => {
-        if (confirm("Alle Felder zurücksetzen?")) {
-          for (let i=0;i<10;i++) delete checked[i];
-          save(); render();
-        }
-      };
-      document.getElementById("closeBingo").onclick = () => dlg.close();
+      document.getElementById("navBoard").onclick = () => setView("board");
+      document.getElementById("navConfirm").onclick = () => setView("confirm");
+      document.getElementById("navLeaderboard").onclick = () => setView("leaderboard");
+      document.getElementById("navSettings").onclick = () => setView("settings");
 
-      // basic service worker
+      // service worker
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js").catch(()=>{});
       }
 
+      // Start: if roomId already set, start sync
+      saveLocal();
+      if (assertSupabaseConfigured() && app.roomId) startSync().catch(()=>{});
       render();
     </script>
   </body>
