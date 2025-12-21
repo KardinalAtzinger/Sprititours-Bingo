@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bier-Bingo</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0b1220" />
+    <style>
+      :root { --bg:#0b1220; --card:#ffffff10; --card2:#22c55e2e; --border:#ffffff1f; --border2:#22c55e73; --txt:#fff; --muted:#ffffffb3; }
+      *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+      body{margin:0;background:var(--bg);color:var(--txt)}
+      header{padding:18px 18px 10px}
+      h1{margin:0;font-size:28px}
+      .sub{margin-top:6px;color:var(--muted);font-size:14px}
+      .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px 18px 18px}
+      .cell{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:14px;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;user-select:none}
+      .cell.done{border-color:var(--border2);background:var(--card2)}
+      .emoji{font-size:28px}
+      .name{font-size:18px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .hint{color:var(--muted);font-size:12px}
+      footer{padding:0 18px 18px;display:flex;gap:10px;align-items:center}
+      button{border:1px solid #ef444473;background:#ef44442e;color:white;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+      .small{color:var(--muted);font-size:12px}
+      dialog{border:none;border-radius:14px;padding:16px;max-width:320px}
+      dialog::backdrop{background:#0008}
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bier-Bingo</h1>
+      <div class="sub" id="status">0/10 erledigt</div>
+    </header>
+
+    <main class="grid" id="grid"></main>
+
+    <footer>
+      <button id="reset">Reset</button>
+      <div class="small">Tippen = Feld freischalten. Wird lokal gespeichert.</div>
+    </footer>
+
+    <dialog id="bingo">
+      <h3 style="margin:0 0 6px">BINGO! 🍻🔥</h3>
+      <div style="color:#333; margin-bottom:12px">Du hast alle Kumpels besucht!</div>
+      <button id="closeBingo" style="border-color:#0b1220;background:#0b1220">Nice</button>
+    </dialog>
+
+    <script>
+      const KEY = "bier_bingo_pwa_v1";
+      const DEFAULT_FRIENDS = ["Max","Ben","Lukas","Timo","Jonas","Paul","Moritz","Nico","Flo","Chris"];
+
+      const state = (() => {
+        try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
+      })();
+
+      const friends = state.friends?.length === 10 ? state.friends : DEFAULT_FRIENDS;
+      const checked = state.checked || {}; // {idx:true}
+
+      const grid = document.getElementById("grid");
+      const status = document.getElementById("status");
+      const dlg = document.getElementById("bingo");
+
+      function save() {
+        localStorage.setItem(KEY, JSON.stringify({ friends, checked }));
+      }
+
+      function doneCount() {
+        return friends.reduce((acc, _, i) => acc + (checked[i] ? 1 : 0), 0);
+      }
+
+      function render() {
+        grid.innerHTML = "";
+        friends.forEach((name, i) => {
+          const cell = document.createElement("div");
+          cell.className = "cell" + (checked[i] ? " done" : "");
+          cell.innerHTML = `
+            <div class="emoji">${checked[i] ? "🍺" : "🔥"}</div>
+            <div class="name">${name}</div>
+            <div class="hint">${checked[i] ? "Erledigt" : "Grillen + Bier"}</div>
+          `;
+          cell.onclick = () => {
+            checked[i] = !checked[i];
+            save();
+            render();
+            if (doneCount() === 10) dlg.showModal();
+          };
+          grid.appendChild(cell);
+        });
+        status.textContent = `${doneCount()}/10 erledigt` + (doneCount()===10 ? " — BINGO! 🎉" : "");
+      }
+
+      document.getElementById("reset").onclick = () => {
+        if (confirm("Alle Felder zurücksetzen?")) {
+          for (let i=0;i<10;i++) delete checked[i];
+          save(); render();
+        }
+      };
+      document.getElementById("closeBingo").onclick = () => dlg.close();
+
+      // basic service worker
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js").catch(()=>{});
+      }
+
+      render();
+    </script>
+  </body>
+</html>
