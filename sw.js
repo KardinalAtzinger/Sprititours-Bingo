@@ -1,4 +1,4 @@
-const CACHE = "bier-bingo-v3";
+const CACHE = "bier-bingo-v99";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./sw.js"];
 
 self.addEventListener("install", (e) => {
