@@ -720,48 +720,77 @@
       }
 
       function openNamesEditor() {
-        const d = document.createElement("dialog");
-        d.innerHTML = `
-          <h3 class="dlgTitle">Kumpel-Namen bearbeiten</h3>
-          <div class="small">Die 10 Felder sind euer gemeinsames Layout (wird im Room geteilt).</div>
-          <hr />
-          <div id="inputs"></div>
-          <hr />
-          <div class="row" style="position:sticky;bottom:0;background:#0b1220;padding-top:10px">
-  <button class="btn" id="saveNames">Speichern</button>
-  <button class="btn danger" id="cancelNames">Abbrechen</button>
-</div>
-        `;
-        document.body.appendChild(d);
+  // Overlay
+  const overlay = document.createElement("div");
+  overlay.className = "bbOverlay";
 
-        const inputs = d.querySelector("#inputs");
-        for (let i=0;i<10;i++){
-          const w = document.createElement("div");
-          w.innerHTML = `
-            <label>Feld ${i+1}</label>
-            <input id="n_${i}" value="${escapeHtml(app.friends[i])}" />
-          `;
-          inputs.appendChild(w);
-        }
+  // Modal
+  const modal = document.createElement("div");
+  modal.className = "bbModal";
+  overlay.appendChild(modal);
 
-        d.querySelector("#cancelNames").onclick = () => { d.close(); d.remove(); };
-        d.querySelector("#saveNames").onclick = async () => {
-          const newFriends = [];
-          for (let i=0;i<10;i++){
-            newFriends.push((d.querySelector("#n_"+i).value || "").trim() || `Kumpel ${i+1}`);
-          }
-          try {
-            await updateFriendsShared(newFriends);
-          } catch {
-            // even if cloud fails, keep local
-            app.friends = newFriends;
-            saveLocal();
-          }
-          d.close(); d.remove();
-        };
+  // Head
+  const head = document.createElement("div");
+  head.className = "bbModalHead";
+  head.innerHTML = `
+    <h3 class="dlgTitle">Kumpel-Namen bearbeiten</h3>
+    <div class="small">Die 10 Felder sind euer gemeinsames Layout (wird im Room geteilt).</div>
+  `;
+  modal.appendChild(head);
 
-        d.showModal();
-      }
+  // Body (scroll)
+  const body = document.createElement("div");
+  body.className = "bbModalBody";
+  body.innerHTML = `<div id="inputs"></div>`;
+  modal.appendChild(body);
+
+  const inputs = body.querySelector("#inputs");
+  for (let i = 0; i < 10; i++) {
+    const w = document.createElement("div");
+    w.innerHTML = `
+      <label>Feld ${i + 1}</label>
+      <input id="n_${i}" value="${escapeHtml(app.friends[i])}" />
+    `;
+    inputs.appendChild(w);
+  }
+
+  // Footer (buttons always visible)
+  const foot = document.createElement("div");
+  foot.className = "bbModalFoot";
+  foot.innerHTML = `
+    <button class="btn" id="saveNames">Speichern</button>
+    <button class="btn danger" id="cancelNames">Abbrechen</button>
+  `;
+  modal.appendChild(foot);
+
+  function close() {
+    overlay.remove();
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close(); // click outside closes
+  });
+
+  foot.querySelector("#cancelNames").onclick = close;
+
+  foot.querySelector("#saveNames").onclick = async () => {
+    const newFriends = [];
+    for (let i = 0; i < 10; i++) {
+      newFriends.push((body.querySelector("#n_" + i).value || "").trim() || `Kumpel ${i + 1}`);
+    }
+    try {
+      await updateFriendsShared(newFriends);
+    } catch {
+      app.friends = newFriends;
+      saveLocal();
+      render();
+    }
+    close();
+  };
+
+  document.body.appendChild(overlay);
+}
+
 
       /********************
        * Router & render
