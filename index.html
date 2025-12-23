@@ -32,7 +32,11 @@
     .btn{border:1px solid var(--btnb);background:var(--btn);color:#fff;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
     .btn.danger{border-color:var(--badb);background:var(--bad)}
     .card{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:14px}
-    input,select{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(0,0,0,.22);color:#fff}
+    input,select{
+      width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);
+      background:rgba(0,0,0,.22);color:#fff;
+      outline:none;
+    }
     label{display:block;color:var(--muted);font-size:12px;margin:10px 0 6px}
     hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 
@@ -44,7 +48,7 @@
     .bbModal{background:#0b1220;border:1px solid var(--border);border-radius:16px;width:min(420px,100%);max-height:85vh;display:flex;flex-direction:column}
     .bbModalHead{padding:16px 16px 0}
     .bbModalBody{padding:16px;overflow:auto}
-    .bbModalFoot{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px}
+    .bbModalFoot{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap}
   </style>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -89,36 +93,69 @@
 const SUPABASE_URL = "https://hyjydhxamcbeytlvzdnd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_zASMa14T4TduXXR3MDaq6g_XrfmsFdx";
 const TABLE = "bier_bingo_rooms";
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4"; // <-- hochzählen, damit du sicher siehst, dass es live ist
 
 /* ================= STATE ================= */
 const LOCAL_KEY="bier_bingo_pwa_v2";
 const DEFAULT_FRIENDS=["Max","Ben","Lukas","Timo","Jonas","Paul","Moritz","Nico","Flo","Chris"];
+
+function uid() {
+  return (crypto?.randomUUID?.() || ("u_" + Math.random().toString(16).slice(2) + Date.now().toString(16)));
+}
+
+function loadLocal(){
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch { return {}; }
+}
+
+const local = loadLocal();
+
 const app={
-  me:{playerId:crypto.randomUUID(),name:""},
-  roomId:"",
-  friends:DEFAULT_FRIENDS,
-  pins:Array(10).fill("1234"),
-  checkedLocal:{},
+  me:{
+    playerId: local.me?.playerId || uid(),
+    name: local.me?.name || ""
+  },
+  roomId: local.roomId || "",
+  friends: Array.isArray(local.friends) && local.friends.length===10 ? local.friends : DEFAULT_FRIENDS.slice(),
+  pins: Array.isArray(local.pins) && local.pins.length===10 ? local.pins : Array(10).fill("1234"),
+  checkedLocal: local.checkedLocal || {},
   cloud:{state:null},
   ui:{
-    view:"board",
-    confirmDraft:{friendIdx:0,visitorToken:"",pin:""}
+    view: local.ui?.view || "board",
+    confirmDraft: local.ui?.confirmDraft || {friendIdx:0,visitorToken:"",pin:""}
   }
 };
+
+function saveLocal(){
+  localStorage.setItem(LOCAL_KEY, JSON.stringify({
+    me: app.me,
+    roomId: app.roomId,
+    friends: app.friends,
+    pins: app.pins,
+    checkedLocal: app.checkedLocal,
+    ui: { view: app.ui.view, confirmDraft: app.ui.confirmDraft }
+  }));
+}
 
 /* ================= HELPERS ================= */
 const viewEl=document.getElementById("view");
 const statusEl=document.getElementById("status");
 const dlgRequest=document.getElementById("dlgRequest");
 
-function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g,c=>(
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
+  ));
+}
 
-function setView(v){app.ui.view=v;render()}
+function setView(v){
+  app.ui.view=v;
+  saveLocal();
+  render();
+}
 
 /* ================= BOARD ================= */
 function renderBoard(){
-  statusEl.textContent="Board";
+  statusEl.textContent = app.roomId ? `Board • Room: ${app.roomId}` : "Board • (kein Room)";
   const g=document.createElement("div");g.className="grid";
   app.friends.forEach((n,i)=>{
     const c=document.createElement("div");
@@ -136,7 +173,7 @@ function renderConfirm(){
   viewEl.innerHTML=`
     <div class="card">
       <label>Besucher-Code</label>
-      <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}">
+      <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}" placeholder="room|playerId|idx|nonce">
 
       <label>Welcher Kumpel bin ich?</label>
       <select id="friendIdx">
@@ -144,38 +181,109 @@ function renderConfirm(){
       </select>
 
       <label>PIN</label>
-      <input id="pin" value="${escapeHtml(app.ui.confirmDraft.pin)}">
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.ui.confirmDraft.pin)}" placeholder="z.B. 1234">
 
-      <button class="btn" style="margin-top:12px">Bestätigen</button>
+      <button class="btn" id="confirmBtn" style="margin-top:12px">Bestätigen</button>
     </div>
   `;
-  visitorToken.oninput=()=>app.ui.confirmDraft.visitorToken=visitorToken.value;
-  pin.oninput=()=>app.ui.confirmDraft.pin=pin.value;
-  friendIdx.onchange=()=>app.ui.confirmDraft.friendIdx=Number(friendIdx.value);
+
+  const tokenEl = document.getElementById("visitorToken");
+  const pinEl = document.getElementById("pin");
+  const friendEl = document.getElementById("friendIdx");
+
+  tokenEl.addEventListener("input", () => { app.ui.confirmDraft.visitorToken = tokenEl.value; saveLocal(); });
+  pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); });
+  friendEl.addEventListener("change", () => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); });
+
+  document.getElementById("confirmBtn").onclick = () => {
+    alert("Bestätigen-Flow ist in deinem gekürzten Code noch nicht implementiert (Supabase).");
+  };
 }
 
 /* ================= SETTINGS ================= */
 function renderSettings(){
   statusEl.textContent="Setup";
+
   viewEl.innerHTML=`
     <div class="card">
+      <div style="font-weight:900;font-size:18px">Setup</div>
+      <div class="small" style="margin-top:6px;color:var(--muted)">
+        Name + Room-Code setzen, dann erst funktionieren QR-Code / Bestätigen sauber.
+      </div>
+
       <label>Dein Name</label>
-      <input id="meName">
+      <input id="meName" value="${escapeHtml(app.me.name)}" placeholder="z.B. Franz">
 
       <label>Room-Code</label>
-      <input id="roomId">
+      <input id="roomId" value="${escapeHtml(app.roomId)}" placeholder="z.B. sprititours2026">
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="saveSetup" style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">Speichern</button>
+        <button class="btn danger" id="resetSetup">Reset lokal</button>
+      </div>
 
       <hr />
-      ${app.friends.map((n,i)=>`
-        <label>${escapeHtml(n)} – PIN</label>
-        <input id="pin_${i}" value="${escapeHtml(app.pins[i])}">
-      `).join("")}
+
+      <div style="font-weight:900">Gastgeber-PINs</div>
+      <div class="small" style="margin-top:6px;color:var(--muted)">Bleibt lokal auf deinem Gerät.</div>
+
+      <div id="pins"></div>
     </div>
   `;
-  app.friends.forEach((_,i)=>{
-    const el=document.getElementById("pin_"+i);
-    el.oninput=()=>{app.pins[i]=el.value};
+
+  // Pins rendern (separat, damit wir später nicht ständig die ganze View neu bauen)
+  const pinsWrap = document.getElementById("pins");
+  const frag = document.createDocumentFragment();
+
+  app.friends.forEach((n,i)=>{
+    const block = document.createElement("div");
+    block.innerHTML = `
+      <label>${escapeHtml(n)} – PIN</label>
+      <input id="pin_${i}"
+             inputmode="numeric"
+             autocomplete="one-time-code"
+             value="${escapeHtml(app.pins[i])}">
+    `;
+    frag.appendChild(block);
   });
+
+  pinsWrap.appendChild(frag);
+
+  // iOS: lieber addEventListener("input") + rAF (stabiler als oninput in manchen WebViews)
+  app.friends.forEach((_,i)=>{
+    const el = document.getElementById("pin_"+i);
+    el.addEventListener("input", () => {
+      const v = el.value;
+      requestAnimationFrame(() => {
+        app.pins[i] = v;
+      });
+    });
+  });
+
+  document.getElementById("saveSetup").onclick = () => {
+    const meName = document.getElementById("meName").value.trim();
+    const roomId = document.getElementById("roomId").value.trim();
+
+    app.me.name = meName;
+    app.roomId = roomId;
+
+    // Pins auslesen (falls iOS Event mal hakt)
+    for (let i=0;i<10;i++){
+      const p = (document.getElementById("pin_"+i)?.value || "").trim();
+      app.pins[i] = p || "1234";
+    }
+
+    saveLocal();
+    alert("Gespeichert ✅");
+    // optional: Statuszeile aktualisieren
+    render();
+  };
+
+  document.getElementById("resetSetup").onclick = () => {
+    if (!confirm("Lokale Daten (Name, Room, PINs) zurücksetzen?")) return;
+    localStorage.removeItem(LOCAL_KEY);
+    location.reload();
+  };
 }
 
 /* ================= QR ================= */
@@ -197,20 +305,21 @@ function openRequestDialog(idx){
 
   const token=`${app.roomId}|${app.me.playerId}|${idx}|${Math.random().toString(16).slice(2,8)}`;
   new QRCode(qr,{text:token,width:220,height:220});
-
   code.textContent=token;
   dlgRequest.showModal();
 }
 
 /* ================= RENDER ================= */
 function render(){
-  if(app.ui.view==="board")renderBoard();
-  else if(app.ui.view==="confirm")renderConfirm();
-  else if(app.ui.view==="settings")renderSettings();
+  if(app.ui.view==="board") renderBoard();
+  else if(app.ui.view==="confirm") renderConfirm();
+  else if(app.ui.view==="settings") renderSettings();
   else viewEl.innerHTML="";
 }
+
 render();
- const versionEl = document.getElementById("version");
+
+const versionEl = document.getElementById("version");
 if (versionEl) versionEl.textContent = "Version " + APP_VERSION;
 </script>
 
