@@ -217,10 +217,20 @@ function renderSettings(){
       <label>Room-Code</label>
       <input id="roomId" value="${escapeHtml(app.roomId)}" placeholder="z.B. sprititours2026">
 
-      <div class="row" style="margin-top:12px">
-        <button class="btn" id="saveSetup" style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">Speichern</button>
-        <button class="btn danger" id="resetSetup">Reset lokal</button>
-      </div>
+     <div class="row" style="margin-top:12px">
+  <button class="btn" id="saveSetup"
+    style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
+    Speichern
+  </button>
+
+  <button class="btn" id="editFriends">
+    Kumpel bearbeiten
+  </button>
+
+  <button class="btn danger" id="resetSetup">
+    Reset lokal
+  </button>
+</div>
 
       <hr />
 
