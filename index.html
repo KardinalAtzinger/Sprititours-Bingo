@@ -202,53 +202,60 @@ function renderConfirm(){
 
 /* ================= SETTINGS ================= */
 function renderSettings(){
-  statusEl.textContent="Setup";
+  statusEl.textContent = "Setup";
 
-  viewEl.innerHTML=`
+  viewEl.innerHTML = `
     <div class="card">
       <div style="font-weight:900;font-size:18px">Setup</div>
       <div class="small" style="margin-top:6px;color:var(--muted)">
-        Name + Room-Code setzen, dann erst funktionieren QR-Code / Bestätigen sauber.
+        Name + Room-Code setzen, dann funktionieren QR-Code und Bestätigen korrekt.
       </div>
 
       <label>Dein Name</label>
-      <input id="meName" value="${escapeHtml(app.me.name)}" placeholder="z.B. Franz">
+      <input id="meName"
+             value="${escapeHtml(app.me.name)}"
+             placeholder="z.B. Franz">
 
       <label>Room-Code</label>
-      <input id="roomId" value="${escapeHtml(app.roomId)}" placeholder="z.B. sprititours2026">
+      <input id="roomId"
+             value="${escapeHtml(app.roomId)}"
+             placeholder="z.B. sprititours2026">
 
-     <div class="row" style="margin-top:12px">
-  <button class="btn" id="saveSetup"
-    style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
-    Speichern
-  </button>
+      <div class="row" style="margin-top:12px">
+        <button class="btn"
+                id="saveSetup"
+                style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
+          Speichern
+        </button>
 
-  <button class="btn" id="editFriends">
-    Kumpel bearbeiten
-  </button>
+        <button class="btn" id="editFriends">
+          Kumpel bearbeiten
+        </button>
 
-  <button class="btn danger" id="resetSetup">
-    Reset lokal
-  </button>
-</div>
+        <button class="btn danger" id="resetSetup">
+          Reset lokal
+        </button>
+      </div>
 
       <hr />
 
       <div style="font-weight:900">Gastgeber-PINs</div>
-      <div class="small" style="margin-top:6px;color:var(--muted)">Bleibt lokal auf deinem Gerät.</div>
+      <div class="small" style="margin-top:6px;color:var(--muted)">
+        Bleibt lokal auf deinem Gerät.
+      </div>
 
       <div id="pins"></div>
     </div>
   `;
 
-  // Pins rendern (separat, damit wir später nicht ständig die ganze View neu bauen)
+  /* ---------- PIN-Felder rendern ---------- */
   const pinsWrap = document.getElementById("pins");
   const frag = document.createDocumentFragment();
 
-  app.friends.forEach((n,i)=>{
+  app.friends.forEach((name, i) => {
     const block = document.createElement("div");
     block.innerHTML = `
-      <label>${escapeHtml(n)} – PIN</label>
+      <label>${escapeHtml(name)} – PIN</label>
       <input id="pin_${i}"
              inputmode="numeric"
              autocomplete="one-time-code"
@@ -259,9 +266,9 @@ function renderSettings(){
 
   pinsWrap.appendChild(frag);
 
-  // iOS: lieber addEventListener("input") + rAF (stabiler als oninput in manchen WebViews)
-  app.friends.forEach((_,i)=>{
-    const el = document.getElementById("pin_"+i);
+  /* ---------- iOS-stabile PIN-Events ---------- */
+  app.friends.forEach((_, i) => {
+    const el = document.getElementById("pin_" + i);
     el.addEventListener("input", () => {
       const v = el.value;
       requestAnimationFrame(() => {
@@ -270,6 +277,9 @@ function renderSettings(){
     });
   });
 
+  /* ---------- Buttons ---------- */
+
+  // Speichern
   document.getElementById("saveSetup").onclick = () => {
     const meName = document.getElementById("meName").value.trim();
     const roomId = document.getElementById("roomId").value.trim();
@@ -277,24 +287,28 @@ function renderSettings(){
     app.me.name = meName;
     app.roomId = roomId;
 
-    // Pins auslesen (falls iOS Event mal hakt)
-    for (let i=0;i<10;i++){
-      const p = (document.getElementById("pin_"+i)?.value || "").trim();
+    // Fallback: PINs erneut auslesen
+    for (let i = 0; i < 10; i++) {
+      const p = (document.getElementById("pin_" + i)?.value || "").trim();
       app.pins[i] = p || "1234";
     }
 
     saveLocal();
-    alert("Gespeichert ✅");
-    // optional: Statuszeile aktualisieren
     render();
   };
 
+  // Kumpel bearbeiten
+  const editBtn = document.getElementById("editFriends");
+  if (editBtn) editBtn.onclick = openFriendsEditor;
+
+  // Reset
   document.getElementById("resetSetup").onclick = () => {
     if (!confirm("Lokale Daten (Name, Room, PINs) zurücksetzen?")) return;
     localStorage.removeItem(LOCAL_KEY);
     location.reload();
   };
 }
+
 
 /* ================= QR ================= */
 function openRequestDialog(idx){
