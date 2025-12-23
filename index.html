@@ -197,6 +197,7 @@ function openRequestDialog(idx){
 
   const token=`${app.roomId}|${app.me.playerId}|${idx}|${Math.random().toString(16).slice(2,8)}`;
   new QRCode(qr,{text:token,width:220,height:220});
+
   code.textContent=token;
   dlgRequest.showModal();
 }
