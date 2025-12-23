@@ -56,6 +56,7 @@
   <div>
     <h1>Bier-Bingo</h1>
     <div class="sub" id="status">—</div>
+    <div class="sub" id="version">Version —</div>
   </div>
   <div class="row">
     <button class="pill" onclick="setView('board')">Board</button>
@@ -207,6 +208,8 @@ function render(){
   else viewEl.innerHTML="";
 }
 render();
+ const versionEl = document.getElementById("version");
+if (versionEl) versionEl.textContent = "Version " + APP_VERSION;
 </script>
 
 </body>
