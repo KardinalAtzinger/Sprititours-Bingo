@@ -414,13 +414,18 @@ function renderSettings(){
 
   /* ---------- Buttons ---------- */
 
-  // Speichern
-  document.getElementById("saveSetup").onclick = () => {
-    const meName = document.getElementById("meName").value.trim();
-    const roomId = document.getElementById("roomId").value.trim();
+  // Speichern (Host)  ✅ legt/updated Room-State in Supabase an
+document.getElementById("saveSetup").onclick = async () => {
+  const meName = document.getElementById("meName").value.trim();
+  const roomId = document.getElementById("roomId").value.trim();
 
-    app.me.name = meName;
-    app.roomId = roomId;
+  if (!meName || !roomId) {
+    alert("Bitte Name und Room-Code setzen.");
+    return;
+  }
+
+  app.me.name = meName;
+  app.roomId = roomId;
 
     // Fallback: PINs erneut auslesen
     for (let i = 0; i < 10; i++) {
