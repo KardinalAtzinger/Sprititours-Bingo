@@ -195,83 +195,146 @@ function renderBoard(){
 
 /* ================= CONFIRM ================= */
 function renderConfirm(){
-  statusEl.textContent="Bestätigen";
-  viewEl.innerHTML=`
+  statusEl.textContent = "Bestätigen";
+
+  viewEl.innerHTML = `
     <div class="card">
       <label>Besucher-Code</label>
-      <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}" placeholder="room|playerId|idx|nonce">
+      <input
+        id="visitorToken"
+        value="${escapeHtml(app.ui.confirmDraft.visitorToken)}"
+        placeholder="room|playerId|idx|nonce"
+      >
 
       <label>Welcher Kumpel bin ich?</label>
       <select id="friendIdx">
-        ${app.friends.map((n,i)=>`<option value="${i}" ${i===app.ui.confirmDraft.friendIdx?"selected":""}>${escapeHtml(n)}</option>`).join("")}
+        ${app.friends
+          .map(
+            (n, i) =>
+              `<option value="${i}" ${
+                i === app.ui.confirmDraft.friendIdx ? "selected" : ""
+              }>${escapeHtml(n)}</option>`
+          )
+          .join("")}
       </select>
 
       <label>PIN</label>
-      <input id="pin" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.ui.confirmDraft.pin)}" placeholder="z.B. 1234">
+      <input
+        id="pin"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        value="${escapeHtml(app.ui.confirmDraft.pin)}"
+        placeholder="z.B. 1234"
+      >
 
-      <button class="btn" id="confirmBtn" style="margin-top:12px">Bestätigen</button>
+      <button class="btn" id="confirmBtn" style="margin-top:12px">
+        Bestätigen
+      </button>
     </div>
   `;
 
   const tokenEl = document.getElementById("visitorToken");
   const pinEl = document.getElementById("pin");
   const friendEl = document.getElementById("friendIdx");
+  const btnEl = document.getElementById("confirmBtn");
 
-  tokenEl.addEventListener("input", () => { app.ui.confirmDraft.visitorToken = tokenEl.value; saveLocal(); });
-  pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); });
-  friendEl.addEventListener("change", () => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); });
+  tokenEl.addEventListener("input", () => {
+    app.ui.confirmDraft.visitorToken = tokenEl.value;
+    saveLocal();
+  });
+  pinEl.addEventListener("input", () => {
+    app.ui.confirmDraft.pin = pinEl.value;
+    saveLocal();
+  });
+  friendEl.addEventListener("change", () => {
+    app.ui.confirmDraft.friendIdx = Number(friendEl.value);
+    saveLocal();
+  });
 
- document.getElementById("confirmBtn").onclick = async () => {
-  try {
-    const raw = document.getElementById("visitorToken").value.trim();
-    const pin = document.getElementById("pin").value.trim();
-    const visitorIdx = Number(document.getElementById("friendIdx").value);
+  btnEl.onclick = async () => {
+    try {
+      const raw = tokenEl.value.trim();
+      const pin = pinEl.value.trim();
+      const visitorIdx = Number(friendEl.value);
 
-    if (!raw) return alert("Bitte Besucher-Code einfügen.");
-    if (!pin) return alert("Bitte PIN eingeben.");
+      if (!raw) return alert("Bitte Besucher-Code einfügen.");
+      if (!pin) return alert("Bitte PIN eingeben.");
 
-    const parts = raw.split("|");
-    if (parts.length !== 4) return alert("Ungültiger Besucher-Code.");
+      const parts = raw.split("|");
+      if (parts.length !== 4)
+        return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
 
-    const roomId = parts[0];
-    const targetIdx = Number(parts[2]);
-    const nonce = parts[3];
+      const roomId = parts[0];
+      const targetIdx = Number(parts[2]);
+      const nonce = parts[3];
 
-    const { data: room, error } = await sb
-      .from(TABLE)
-      .select("*")
-      .eq("room_id", roomId)
-      .single();
+      if (!roomId) return alert("Token: room fehlt.");
+      if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9)
+        return alert("Token: idx ungültig.");
+      if (!nonce) return alert("Token: nonce fehlt.");
 
-    if (error) throw error;
+      // Room laden
+      const { data: room, error } = await sb
+        .from(TABLE)
+        .select("*")
+        .eq("room_id", roomId)
+        .single();
 
-    const st = room.state;
-    if (st.pins[visitorIdx] !== pin) return alert("Falsche PIN.");
+      if (error) throw error;
+      if (!room || !room.state)
+        return alert("Room hat keinen gültigen State.");
 
-    if (st.confirmed[targetIdx]) {
-      alert("Schon bestätigt ✅");
-      return setView("board");
+      const st = room.state;
+
+      // State absichern
+      st.pins = Array.isArray(st.pins) ? st.pins : [];
+      st.confirmed =
+        Array.isArray(st.confirmed) && st.confirmed.length === 10
+          ? st.confirmed
+          : Array(10).fill(false);
+      st.confirmations = Array.isArray(st.confirmations)
+        ? st.confirmations
+        : [];
+
+      // PIN prüfen
+      if (String(st.pins[visitorIdx] || "").trim() !== String(pin).trim())
+        return alert("Falsche PIN.");
+
+      // QR-Code nur einmal verwendbar
+      if (st.confirmations.some((x) => x && x.nonce === nonce))
+        return alert("Dieser Code wurde bereits verwendet.");
+
+      // Schon bestätigt?
+      if (st.confirmed[targetIdx]) {
+        alert("Schon bestätigt ✅");
+        return setView("board");
+      }
+
+      // Bestätigen
+      st.confirmed[targetIdx] = true;
+      st.confirmations.push({
+        idx: targetIdx,
+        byFriendIdx: visitorIdx,
+        byName: app.friends[visitorIdx],
+        nonce,
+        at: new Date().toISOString(),
+      });
+      st.updatedAt = new Date().toISOString();
+
+      const { error: updErr } = await sb
+        .from(TABLE)
+        .update({ state: st })
+        .eq("room_id", roomId);
+
+      if (updErr) throw updErr;
+
+      alert("Bestätigung gespeichert ✅");
+      setView("board");
+    } catch (e) {
+      console.error(e);
+      alert("Fehler beim Bestätigen: " + (e?.message || e));
     }
-
-    st.confirmed[targetIdx] = true;
-    st.confirmations.push({
-      idx: targetIdx,
-      by: app.friends[visitorIdx],
-      at: new Date().toISOString(),
-      nonce
-    });
-
-    await sb.from(TABLE)
-      .update({ state: st })
-      .eq("room_id", roomId);
-
-    alert("Bestätigung gespeichert ✅");
-    setView("board");
-  } catch (e) {
-    console.error(e);
-    alert("Fehler beim Bestätigen");
-  }
-};
+  };
 }
 
 /* ================= SETTINGS ================= */
