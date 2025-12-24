@@ -235,105 +235,77 @@ function renderBoard(){
   viewEl.appendChild(g);
 }
 
-/* ================= CONFIRM ================= */
-function renderConfirm(){
-  statusEl.textContent = "Bestätigen";
+/* ================= LEADERBOARD ================= */
+function renderLeaderboard(){
+  statusEl.textContent = "Rangliste";
+
+  const room = app.cloud.room;
+  const st = room?.state || {};
+
+  const confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10
+    ? st.confirmed
+    : Array(10).fill(false);
+
+  const confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
+
+  // Punkte: wie oft hat wer bestätigt?
+  const scoreByName = new Map();
+  for (const c of confirmations) {
+    const name = c?.byName || c?.by || "Unbekannt";
+    scoreByName.set(name, (scoreByName.get(name) || 0) + 1);
+  }
+
+  // Alle hardcoded Freunde sollen auftauchen (auch mit 0 Punkten)
+  for (const n of app.friends) {
+    if (!scoreByName.has(n)) scoreByName.set(n, 0);
+  }
+
+  const rows = Array.from(scoreByName.entries())
+    .map(([name, score]) => ({ name, score }))
+    .sort((a,b) => (b.score - a.score) || a.name.localeCompare(b.name, "de"));
+
+  const totalConfirmed = confirmed.filter(Boolean).length;
 
   viewEl.innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:900;font-size:18px">Rangliste</div>
+      <div class="sub" style="margin-top:6px">
+        Room: ${escapeHtml(app.roomId || "—")} • Bestätigt: ${totalConfirmed}/10
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:900;margin-bottom:8px">Punkte (Bestätigungen vergeben)</div>
+      ${rows.map((r, i) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div style="width:26px;text-align:center;font-weight:900;color:var(--muted)">${i+1}.</div>
+            <div style="font-weight:800">${escapeHtml(r.name)}</div>
+          </div>
+          <div style="font-weight:900">${r.score}</div>
+        </div>
+      `).join("")}
+    </div>
+
     <div class="card">
-      <label>Besucher-Code</label>
-      <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}" placeholder="room|playerId|idx|nonce">
-
-      <label>Welcher Kumpel bin ich?</label>
-      <select id="friendIdx">
-        ${app.friends.map((n,i)=>`<option value="${i}" ${i===app.ui.confirmDraft.friendIdx?"selected":""}>${escapeHtml(n)}</option>`).join("")}
-      </select>
-
-      <label>PIN</label>
-      <input id="pin" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.ui.confirmDraft.pin)}" placeholder="z.B. 1234">
-
-      <button class="btn" id="confirmBtn" style="margin-top:12px">Bestätigen</button>
+      <div style="font-weight:900;margin-bottom:8px">Status (wer ist schon bestätigt?)</div>
+      ${app.friends.map((name, idx) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
+          <div style="font-weight:800">${escapeHtml(name)}</div>
+          <div style="font-weight:900">${confirmed[idx] ? "✅" : "—"}</div>
+        </div>
+      `).join("")}
     </div>
   `;
+}
 
-  const tokenEl = document.getElementById("visitorToken");
-  const pinEl = document.getElementById("pin");
-  const friendEl = document.getElementById("friendIdx");
-  const btnEl = document.getElementById("confirmBtn");
-
-  tokenEl.addEventListener("input", () => { app.ui.confirmDraft.visitorToken = tokenEl.value; saveLocal(); });
-  pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); });
-  friendEl.addEventListener("change", () => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); });
-
-  btnEl.onclick = async () => {
-    try {
-      const raw = tokenEl.value.trim();
-      const pin = pinEl.value.trim();
-      const visitorIdx = Number(friendEl.value);
-
-      if (!raw) return alert("Bitte Besucher-Code einfügen.");
-      if (!pin) return alert("Bitte PIN eingeben.");
-
-      const parts = raw.split("|");
-      if (parts.length !== 4) return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
-
-      const roomId = parts[0];
-      const targetIdx = Number(parts[2]);
-      const nonce = parts[3];
-
-      if (!roomId) return alert("Token: room fehlt.");
-      if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9) return alert("Token: idx ungültig.");
-      if (!nonce) return alert("Token: nonce fehlt.");
-
-      const { data: room, error } = await sb
-        .from(TABLE)
-        .select("*")
-        .eq("room_id", roomId)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!room || !room.state) return alert("Room nicht gefunden oder ohne State. Host: Setup → Speichern.");
-
-      const st = room.state || {};
-      st.pins = Array.isArray(st.pins) ? st.pins : [];
-      st.confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10 ? st.confirmed : Array(10).fill(false);
-      st.confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
-
-      if (String(st.pins?.[visitorIdx] ?? "").trim() !== String(pin).trim()) return alert("Falsche PIN.");
-      if (st.confirmations.some(x => x && x.nonce === nonce)) return alert("Dieser Code wurde bereits verwendet.");
-
-      if (st.confirmed[targetIdx]) {
-        alert("Schon bestätigt ✅");
-        return setView("board");
-      }
-
-      st.confirmed[targetIdx] = true;
-      st.confirmations.push({
-        idx: targetIdx,
-        byFriendIdx: visitorIdx,
-        byName: app.friends[visitorIdx],
-        nonce,
-        at: nowIso()
-      });
-      st.updatedAt = nowIso();
-
-      const { data: updated, error: updErr } = await sb
-        .from(TABLE)
-        .update({ state: st })
-        .eq("room_id", roomId)
-        .select("*")
-        .single();
-
-      if (updErr) throw updErr;
-
-      applyRoom(updated);
-      alert("Bestätigung gespeichert ✅");
-      setView("board");
-    } catch (e) {
-      console.error(e);
-      alert("Fehler beim Bestätigen: " + (e?.message || e));
-    }
-  };
+/* ================= RENDER ================= */
+function render(){
+  if(app.ui.view==="board") renderBoard();
+  else if(app.ui.view==="confirm") renderConfirm();
+  else if(app.ui.view==="leaderboard") renderLeaderboard();
+  else if(app.ui.view==="settings") renderSettings();
+  else viewEl.innerHTML="";
 }
 
 /* ================= SETTINGS ================= */
