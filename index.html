@@ -496,13 +496,79 @@ function openRequestDialog(idx){
   dlgRequest.showModal();
 }
 
+/* ================= LEADERBOARD ================= */
+function renderLeaderboard(){
+  statusEl.textContent = "Rangliste";
+
+  const room = app.cloud.room;
+  const st = room?.state || {};
+
+  const confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10
+    ? st.confirmed
+    : Array(10).fill(false);
+
+  const confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
+
+  // Punkte: wie oft hat wer bestätigt?
+  const scoreByName = new Map();
+  for (const c of confirmations) {
+    const name = c?.byName || c?.by || "Unbekannt";
+    scoreByName.set(name, (scoreByName.get(name) || 0) + 1);
+  }
+
+  // Alle hardcoded Freunde sollen auftauchen (auch mit 0 Punkten)
+  for (const n of app.friends) {
+    if (!scoreByName.has(n)) scoreByName.set(n, 0);
+  }
+
+  const rows = Array.from(scoreByName.entries())
+    .map(([name, score]) => ({ name, score }))
+    .sort((a,b) => (b.score - a.score) || a.name.localeCompare(b.name, "de"));
+
+  const totalConfirmed = confirmed.filter(Boolean).length;
+
+  viewEl.innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:900;font-size:18px">Rangliste</div>
+      <div class="sub" style="margin-top:6px">
+        Room: ${escapeHtml(app.roomId || "—")} • Bestätigt: ${totalConfirmed}/10
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:900;margin-bottom:8px">Punkte (Bestätigungen vergeben)</div>
+      ${rows.map((r, i) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div style="width:26px;text-align:center;font-weight:900;color:var(--muted)">${i+1}.</div>
+            <div style="font-weight:800">${escapeHtml(r.name)}</div>
+          </div>
+          <div style="font-weight:900">${r.score}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="card">
+      <div style="font-weight:900;margin-bottom:8px">Status (wer ist schon bestätigt?)</div>
+      ${app.friends.map((name, idx) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
+          <div style="font-weight:800">${escapeHtml(name)}</div>
+          <div style="font-weight:900">${confirmed[idx] ? "✅" : "—"}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 /* ================= RENDER ================= */
 function render(){
   if(app.ui.view==="board") renderBoard();
   else if(app.ui.view==="confirm") renderConfirm();
+  else if(app.ui.view==="leaderboard") renderLeaderboard();
   else if(app.ui.view==="settings") renderSettings();
   else viewEl.innerHTML="";
 }
+
 
 render();
 
