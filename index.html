@@ -94,25 +94,13 @@
 const SUPABASE_URL = "https://hyjydhxamcbeytlvzdnd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_zASMa14T4TduXXR3MDaq6g_XrfmsFdx";
 const TABLE = "bier_bingo_rooms";
-const APP_VERSION = "1.0.5"; // <-- hochzählen, damit du sicher siehst, dass es live ist
-  
+const APP_VERSION = "1.0.6";
+
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/* ================= HARDCODED TEILNEHMER =================
-   -> Hier trägst du fix deine 10 Namen ein.
-   -> Der Friends-Editor im Setup wurde entfernt (damit es wirklich hardcoded ist).
-*/
+/* ================= HARDCODED TEILNEHMER ================= */
 const HARDCODED_FRIENDS = [
-  "Rob",
-  "Böhmi",
-  "Chris",
-  "HoolGER",
-  "Tilo",
-  "Phil",
-  "Wim",
-  "Schachti",
-  "Janis",
-  "Franz"
+  "Rob","Böhmi","Chris","HoolGER","Tilo","Phil","Wim","Schachti","Janis","Franz"
 ];
 
 /* ================= STATE ================= */
@@ -121,11 +109,9 @@ const LOCAL_KEY="bier_bingo_pwa_v2";
 function uid() {
   return (crypto?.randomUUID?.() || ("u_" + Math.random().toString(16).slice(2) + Date.now().toString(16)));
 }
-
 function loadLocal(){
   try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch { return {}; }
 }
-
 const local = loadLocal();
 
 const app={
@@ -134,15 +120,16 @@ const app={
     name: local.me?.name || ""
   },
   roomId: local.roomId || "",
-
-  // ✅ Teilnehmer sind jetzt fest verdrahtet:
   friends: HARDCODED_FRIENDS.slice(),
-
-  // Pins bleiben weiterhin lokal speicherbar (und werden anhand der 10 hardcoded Namen gerendert)
   pins: Array.isArray(local.pins) && local.pins.length===10 ? local.pins : Array(10).fill("1234"),
-
   checkedLocal: local.checkedLocal || {},
-  cloud:{state:null},
+
+  cloud:{
+    room: null,
+    confirmed: Array(10).fill(false),
+    sub: null
+  },
+
   ui:{
     view: local.ui?.view || "board",
     confirmDraft: local.ui?.confirmDraft || {friendIdx:0,visitorToken:"",pin:""}
@@ -153,10 +140,7 @@ function saveLocal(){
   localStorage.setItem(LOCAL_KEY, JSON.stringify({
     me: app.me,
     roomId: app.roomId,
-
-    // ✅ friends werden NICHT mehr gespeichert (weil hardcoded)
     pins: app.pins,
-
     checkedLocal: app.checkedLocal,
     ui: { view: app.ui.view, confirmDraft: app.ui.confirmDraft }
   }));
@@ -172,6 +156,7 @@ function escapeHtml(s){
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
   ));
 }
+function nowIso(){ return new Date().toISOString(); }
 
 function setView(v){
   app.ui.view=v;
@@ -179,18 +164,75 @@ function setView(v){
   render();
 }
 
+/* ================= SUPABASE HELPERS ================= */
+function applyRoom(room){
+  app.cloud.room = room || null;
+  const st = room?.state || {};
+  app.cloud.confirmed =
+    Array.isArray(st.confirmed) && st.confirmed.length === 10
+      ? st.confirmed.slice()
+      : Array(10).fill(false);
+}
+
+async function fetchRoom(roomId){
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("*")
+    .eq("room_id", roomId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function ensureRealtime(){
+  if (!app.roomId) return;
+  if (app.cloud.sub) return;
+
+  app.cloud.sub = sb
+    .channel("bier_bingo_room_changes_" + app.roomId)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: TABLE, filter: `room_id=eq.${app.roomId}` },
+      (payload) => {
+        if (payload?.new) applyRoom(payload.new);
+        render(); // live update UI
+      }
+    )
+    .subscribe();
+}
+
+async function syncRoom(){
+  if(!app.roomId) return;
+  try{
+    const room = await fetchRoom(app.roomId);
+    if(room) applyRoom(room);
+    ensureRealtime();
+  }catch(e){
+    console.warn("syncRoom failed:", e);
+  }
+}
+
 /* ================= BOARD ================= */
 function renderBoard(){
   statusEl.textContent = app.roomId ? `Board • Room: ${app.roomId}` : "Board • (kein Room)";
+
+  const confirmed = app.cloud.confirmed || Array(10).fill(false);
+
   const g=document.createElement("div");g.className="grid";
   app.friends.forEach((n,i)=>{
     const c=document.createElement("div");
-    c.className="cell";
-    c.innerHTML=`<div class="emoji">🔥</div><div class="name">${escapeHtml(n)}</div><div class="hint">Grillen + Bier</div>`;
+    c.className="cell" + (confirmed[i] ? " done" : "");
+    c.innerHTML=`
+      <div class="emoji">${confirmed[i] ? "✅" : "🔥"}</div>
+      <div class="name">${escapeHtml(n)}</div>
+      <div class="hint">${confirmed[i] ? "Bestätigt" : "Grillen + Bier"}</div>
+    `;
     c.onclick=()=>openRequestDialog(i);
     g.appendChild(c);
   });
-  viewEl.innerHTML="";viewEl.appendChild(g);
+
+  viewEl.innerHTML="";
+  viewEl.appendChild(g);
 }
 
 /* ================= CONFIRM ================= */
@@ -200,36 +242,17 @@ function renderConfirm(){
   viewEl.innerHTML = `
     <div class="card">
       <label>Besucher-Code</label>
-      <input
-        id="visitorToken"
-        value="${escapeHtml(app.ui.confirmDraft.visitorToken)}"
-        placeholder="room|playerId|idx|nonce"
-      >
+      <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}" placeholder="room|playerId|idx|nonce">
 
       <label>Welcher Kumpel bin ich?</label>
       <select id="friendIdx">
-        ${app.friends
-          .map(
-            (n, i) =>
-              `<option value="${i}" ${
-                i === app.ui.confirmDraft.friendIdx ? "selected" : ""
-              }>${escapeHtml(n)}</option>`
-          )
-          .join("")}
+        ${app.friends.map((n,i)=>`<option value="${i}" ${i===app.ui.confirmDraft.friendIdx?"selected":""}>${escapeHtml(n)}</option>`).join("")}
       </select>
 
       <label>PIN</label>
-      <input
-        id="pin"
-        inputmode="numeric"
-        autocomplete="one-time-code"
-        value="${escapeHtml(app.ui.confirmDraft.pin)}"
-        placeholder="z.B. 1234"
-      >
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.ui.confirmDraft.pin)}" placeholder="z.B. 1234">
 
-      <button class="btn" id="confirmBtn" style="margin-top:12px">
-        Bestätigen
-      </button>
+      <button class="btn" id="confirmBtn" style="margin-top:12px">Bestätigen</button>
     </div>
   `;
 
@@ -238,18 +261,9 @@ function renderConfirm(){
   const friendEl = document.getElementById("friendIdx");
   const btnEl = document.getElementById("confirmBtn");
 
-  tokenEl.addEventListener("input", () => {
-    app.ui.confirmDraft.visitorToken = tokenEl.value;
-    saveLocal();
-  });
-  pinEl.addEventListener("input", () => {
-    app.ui.confirmDraft.pin = pinEl.value;
-    saveLocal();
-  });
-  friendEl.addEventListener("change", () => {
-    app.ui.confirmDraft.friendIdx = Number(friendEl.value);
-    saveLocal();
-  });
+  tokenEl.addEventListener("input", () => { app.ui.confirmDraft.visitorToken = tokenEl.value; saveLocal(); });
+  pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); });
+  friendEl.addEventListener("change", () => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); });
 
   btnEl.onclick = async () => {
     try {
@@ -261,73 +275,58 @@ function renderConfirm(){
       if (!pin) return alert("Bitte PIN eingeben.");
 
       const parts = raw.split("|");
-      if (parts.length !== 4)
-        return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
+      if (parts.length !== 4) return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
 
       const roomId = parts[0];
       const targetIdx = Number(parts[2]);
       const nonce = parts[3];
 
       if (!roomId) return alert("Token: room fehlt.");
-      if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9)
-        return alert("Token: idx ungültig.");
+      if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9) return alert("Token: idx ungültig.");
       if (!nonce) return alert("Token: nonce fehlt.");
 
-      // Room laden
       const { data: room, error } = await sb
         .from(TABLE)
         .select("*")
         .eq("room_id", roomId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-      if (!room || !room.state)
-        return alert("Room hat keinen gültigen State.");
+      if (!room || !room.state) return alert("Room nicht gefunden oder ohne State. Host: Setup → Speichern.");
 
-      const st = room.state;
-
-      // State absichern
+      const st = room.state || {};
       st.pins = Array.isArray(st.pins) ? st.pins : [];
-      st.confirmed =
-        Array.isArray(st.confirmed) && st.confirmed.length === 10
-          ? st.confirmed
-          : Array(10).fill(false);
-      st.confirmations = Array.isArray(st.confirmations)
-        ? st.confirmations
-        : [];
+      st.confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10 ? st.confirmed : Array(10).fill(false);
+      st.confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
 
-      // PIN prüfen
-      if (String(st.pins[visitorIdx] || "").trim() !== String(pin).trim())
-        return alert("Falsche PIN.");
+      if (String(st.pins?.[visitorIdx] ?? "").trim() !== String(pin).trim()) return alert("Falsche PIN.");
+      if (st.confirmations.some(x => x && x.nonce === nonce)) return alert("Dieser Code wurde bereits verwendet.");
 
-      // QR-Code nur einmal verwendbar
-      if (st.confirmations.some((x) => x && x.nonce === nonce))
-        return alert("Dieser Code wurde bereits verwendet.");
-
-      // Schon bestätigt?
       if (st.confirmed[targetIdx]) {
         alert("Schon bestätigt ✅");
         return setView("board");
       }
 
-      // Bestätigen
       st.confirmed[targetIdx] = true;
       st.confirmations.push({
         idx: targetIdx,
         byFriendIdx: visitorIdx,
         byName: app.friends[visitorIdx],
         nonce,
-        at: new Date().toISOString(),
+        at: nowIso()
       });
-      st.updatedAt = new Date().toISOString();
+      st.updatedAt = nowIso();
 
-      const { error: updErr } = await sb
+      const { data: updated, error: updErr } = await sb
         .from(TABLE)
         .update({ state: st })
-        .eq("room_id", roomId);
+        .eq("room_id", roomId)
+        .select("*")
+        .single();
 
       if (updErr) throw updErr;
 
+      applyRoom(updated);
       alert("Bestätigung gespeichert ✅");
       setView("board");
     } catch (e) {
@@ -345,31 +344,20 @@ function renderSettings(){
     <div class="card">
       <div style="font-weight:900;font-size:18px">Setup</div>
       <div class="small" style="margin-top:6px;color:var(--muted)">
-        Name + Room-Code setzen, dann funktionieren QR-Code und Bestätigen korrekt.
+        Host: Name + Room-Code setzen, dann Speichern (schreibt state.pins/confirmed in Supabase).
       </div>
 
       <label>Dein Name</label>
-      <input id="meName"
-             value="${escapeHtml(app.me.name)}"
-             placeholder="z.B. Franz">
+      <input id="meName" value="${escapeHtml(app.me.name)}" placeholder="z.B. Franz">
 
       <label>Room-Code</label>
-      <input id="roomId"
-             value="${escapeHtml(app.roomId)}"
-             placeholder="z.B. sprititours2026">
+      <input id="roomId" value="${escapeHtml(app.roomId)}" placeholder="z.B. sprititours2026">
 
       <div class="row" style="margin-top:12px">
-        <button class="btn"
-                id="saveSetup"
-                style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
+        <button class="btn" id="saveSetup" style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
           Speichern
         </button>
-
-        <!-- ✅ Friends-Editor entfernt, da Namen hardcoded sind -->
-
-        <button class="btn danger" id="resetSetup">
-          Reset lokal
-        </button>
+        <button class="btn danger" id="resetSetup">Reset lokal</button>
       </div>
 
       <hr />
@@ -383,7 +371,6 @@ function renderSettings(){
     </div>
   `;
 
-  /* ---------- PIN-Felder rendern ---------- */
   const pinsWrap = document.getElementById("pins");
   const frag = document.createDocumentFragment();
 
@@ -391,17 +378,14 @@ function renderSettings(){
     const block = document.createElement("div");
     block.innerHTML = `
       <label>${escapeHtml(name)} – PIN</label>
-      <input id="pin_${i}"
-             inputmode="numeric"
-             autocomplete="one-time-code"
-             value="${escapeHtml(app.pins[i])}">
+      <input id="pin_${i}" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.pins[i])}">
     `;
     frag.appendChild(block);
   });
 
   pinsWrap.appendChild(frag);
 
-  /* ---------- iOS-stabile PIN-Events ---------- */
+  // iOS-stabil
   app.friends.forEach((_, i) => {
     const el = document.getElementById("pin_" + i);
     el.addEventListener("input", () => {
@@ -412,29 +396,73 @@ function renderSettings(){
     });
   });
 
-  /* ---------- Buttons ---------- */
+  // Speichern (Host) ✅ schreibt vollständigen state nach Supabase
+  document.getElementById("saveSetup").onclick = async () => {
+    const meName = document.getElementById("meName").value.trim();
+    const roomId = document.getElementById("roomId").value.trim();
 
-  // Speichern (Host)  ✅ legt/updated Room-State in Supabase an
-document.getElementById("saveSetup").onclick = async () => {
-  const meName = document.getElementById("meName").value.trim();
-  const roomId = document.getElementById("roomId").value.trim();
+    if (!meName || !roomId) {
+      alert("Bitte Name und Room-Code setzen.");
+      return;
+    }
 
-  if (!meName || !roomId) {
-    alert("Bitte Name und Room-Code setzen.");
-    return;
-  }
+    app.me.name = meName;
+    app.roomId = roomId;
 
-  app.me.name = meName;
-  app.roomId = roomId;
-
-    // Fallback: PINs erneut auslesen
+    // PINs auslesen
     for (let i = 0; i < 10; i++) {
       const p = (document.getElementById("pin_" + i)?.value || "").trim();
       app.pins[i] = p || "1234";
     }
 
     saveLocal();
-    render();
+
+    try {
+      // alten state holen (confirmed/confirmations behalten)
+      const { data: existing, error: selErr } = await sb
+        .from(TABLE)
+        .select("state")
+        .eq("room_id", app.roomId)
+        .maybeSingle();
+
+      if (selErr) throw selErr;
+      const prev = existing?.state || {};
+
+      const nextState = {
+        friends: app.friends.slice(),
+        pins: app.pins.slice(),
+        confirmed:
+          Array.isArray(prev.confirmed) && prev.confirmed.length === 10
+            ? prev.confirmed
+            : Array(10).fill(false),
+        confirmations: Array.isArray(prev.confirmations) ? prev.confirmations : [],
+        updatedAt: nowIso()
+      };
+
+      const { data: upserted, error: upErr } = await sb
+        .from(TABLE)
+        .upsert({ room_id: app.roomId, state: nextState }, { onConflict: "room_id" })
+        .select("*")
+        .single();
+
+      if (upErr) throw upErr;
+
+      applyRoom(upserted);
+
+      // Realtime neu setzen (falls roomId vorher leer war)
+      if (app.cloud.sub) {
+        try { await sb.removeChannel(app.cloud.sub); } catch {}
+        app.cloud.sub = null;
+      }
+      ensureRealtime();
+
+      alert("Setup gespeichert – Room ist jetzt aktiv ✅");
+      render();
+    } catch (e) {
+      console.error(e);
+      alert("Fehler beim Setup-Speichern: " + (e?.message || e));
+      render();
+    }
   };
 
   // Reset
@@ -480,6 +508,9 @@ render();
 
 const versionEl = document.getElementById("version");
 if (versionEl) versionEl.textContent = "Version " + APP_VERSION;
+
+// initial sync + realtime
+syncRoom();
 </script>
 
 </body>
