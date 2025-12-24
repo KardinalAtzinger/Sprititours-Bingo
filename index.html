@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="de">
 <head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bier-Bingo</title>
@@ -94,6 +95,8 @@ const SUPABASE_URL = "https://hyjydhxamcbeytlvzdnd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_zASMa14T4TduXXR3MDaq6g_XrfmsFdx";
 const TABLE = "bier_bingo_rooms";
 const APP_VERSION = "1.0.5"; // <-- hochzählen, damit du sicher siehst, dass es live ist
+  
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ================= HARDCODED TEILNEHMER =================
    -> Hier trägst du fix deine 10 Namen ein.
@@ -218,9 +221,57 @@ function renderConfirm(){
   pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); });
   friendEl.addEventListener("change", () => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); });
 
-  document.getElementById("confirmBtn").onclick = () => {
-    alert("Bestätigen-Flow ist in deinem gekürzten Code noch nicht implementiert (Supabase).");
-  };
+ document.getElementById("confirmBtn").onclick = async () => {
+  try {
+    const raw = document.getElementById("visitorToken").value.trim();
+    const pin = document.getElementById("pin").value.trim();
+    const visitorIdx = Number(document.getElementById("friendIdx").value);
+
+    if (!raw) return alert("Bitte Besucher-Code einfügen.");
+    if (!pin) return alert("Bitte PIN eingeben.");
+
+    const parts = raw.split("|");
+    if (parts.length !== 4) return alert("Ungültiger Besucher-Code.");
+
+    const roomId = parts[0];
+    const targetIdx = Number(parts[2]);
+    const nonce = parts[3];
+
+    const { data: room, error } = await sb
+      .from(TABLE)
+      .select("*")
+      .eq("room_id", roomId)
+      .single();
+
+    if (error) throw error;
+
+    const st = room.state;
+    if (st.pins[visitorIdx] !== pin) return alert("Falsche PIN.");
+
+    if (st.confirmed[targetIdx]) {
+      alert("Schon bestätigt ✅");
+      return setView("board");
+    }
+
+    st.confirmed[targetIdx] = true;
+    st.confirmations.push({
+      idx: targetIdx,
+      by: app.friends[visitorIdx],
+      at: new Date().toISOString(),
+      nonce
+    });
+
+    await sb.from(TABLE)
+      .update({ state: st })
+      .eq("room_id", roomId);
+
+    alert("Bestätigung gespeichert ✅");
+    setView("board");
+  } catch (e) {
+    console.error(e);
+    alert("Fehler beim Bestätigen");
+  }
+};
 }
 
 /* ================= SETTINGS ================= */
