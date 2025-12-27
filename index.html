@@ -62,6 +62,7 @@
     <button class="pill" onclick="setView('confirm')">Bestätigen</button>
     <button class="pill" onclick="setView('leaderboard')">Rangliste</button>
     <button class="pill" onclick="setView('settings')">Setup</button>
+    <button class="pill" onclick="setView('help')">Anleitung</button>
   </div>
 </header>
 
@@ -616,6 +617,81 @@ function renderLeaderboard(){
   `;
 }
 
+/* ================= HELP / ANLEITUNG ================= */
+function renderHelp(){
+  statusEl.textContent = "Anleitung";
+
+  viewEl.innerHTML = `
+    <div class="card">
+      <div style="font-weight:900;font-size:20px">🍻 Bier-Bingo – Anleitung</div>
+      <div class="sub" style="margin-top:6px">
+        Lesen dauert kürzer als dein nächstes Bier.
+      </div>
+
+      <hr />
+
+      <div style="font-weight:900">🔥 Worum geht’s?</div>
+      <p class="sub">
+        Der Host grillt und trinkt Bier.  
+        Du bestätigst das Ganze ehrlich per QR-Code.
+        Keine Accounts. Kein Login. Nur Wahrheit und Hopfen.
+      </p>
+
+      <hr />
+
+      <div style="font-weight:900">📷 Schritt 1: Bestätigen öffnen</div>
+      <p class="sub">
+        Öffne den Reiter <b>„Bestätigen“</b>.  
+        Dort wartet schon der QR-Scanner auf dich.
+      </p>
+
+      <div style="font-weight:900">📸 Schritt 2: QR-Code scannen</div>
+      <p class="sub">
+        • Tippe auf <b>„Kamera starten“</b><br>
+        • Halte dein Handy ruhig auf den QR-Code vom Host<br>
+        • Wackeln erst nach dem Scan 🍺
+      </p>
+
+      <div style="font-weight:900">🧑‍🤝‍🧑 Schritt 3: Sag, wer du bist</div>
+      <p class="sub">
+        Wähle <b>deinen Namen</b> aus der Liste.  
+        Ehrlichkeit zahlt sich aus. Früher oder später.
+      </p>
+
+      <div style="font-weight:900">🔐 Schritt 4: PIN eingeben</div>
+      <p class="sub">
+        Gib deinen <b>PIN</b> ein.  
+        Falscher PIN = kein Häkchen = schlechtes Karma.
+      </p>
+
+      <div style="font-weight:900">✅ Schritt 5: Bestätigen</div>
+      <p class="sub">
+        Tippe auf <b>„Bestätigen“</b>.  
+        Wenn alles passt: 🎉 Erfolg!
+      </p>
+
+      <hr />
+
+      <div style="font-weight:900">🏆 Rangliste</div>
+      <p class="sub">
+        Zeigt live:
+        • wer schon bestätigt ist<br>
+        • wer fleißig scannt<br>
+        • wer sich noch drückt 👀
+      </p>
+
+      <hr />
+
+      <div style="font-weight:900">🍺 Fazit</div>
+      <p class="sub">
+        Scannen. PIN. Bestätigen.  
+        Danach wieder zurück zu den wichtigen Dingen im Leben.
+      </p>
+    </div>
+  `;
+}
+
+
 /* ================= SETTINGS ================= */
 function renderSettings(){
   statusEl.textContent = "Setup";
@@ -775,6 +851,7 @@ function render(){
   else if(app.ui.view==="confirm") renderConfirm();
   else if(app.ui.view==="leaderboard") renderLeaderboard();
   else if(app.ui.view==="settings") renderSettings();
+  else if(app.ui.view==="help") renderHelp();
   else viewEl.innerHTML="";
 }
 
