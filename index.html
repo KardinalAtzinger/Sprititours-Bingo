@@ -169,7 +169,6 @@ function setView(v){
 }
 
 /* ================= CONFIRM-REGEL: Grün erst bei allen anderen ================= */
-
 // Wie viele Bestätiger braucht es?
 function requiredConfirmersCount(){
   return Math.max(0, app.friends.length - 1); // bei 10 Leuten: 9
@@ -209,11 +208,9 @@ function recomputeConfirmedFromConfirmations(st){
 function applyRoom(room){
   app.cloud.room = room || null;
   const st = room?.state || {};
-
-  // ❗ confirmed wird jetzt IMMER berechnet (nicht mehr blind aus DB gelesen)
+  // confirmed wird IMMER berechnet
   app.cloud.confirmed = recomputeConfirmedFromConfirmations(st);
 }
-
 
 async function fetchRoom(roomId){
   const { data, error } = await sb
@@ -253,52 +250,34 @@ async function syncRoom(){
   }
 }
 
-/* ================= CONFIRM-REGEL: Grün erst bei allen anderen ================= */
+/* ================= BOARD ================= */
+function renderBoard(){
+  statusEl.textContent = app.roomId ? `Board • Room: ${app.roomId}` : "Board • (kein Room)";
 
-// Wie viele Bestätiger braucht es?
-function requiredConfirmersCount(){
-  return Math.max(0, app.friends.length - 1); // bei 10 Leuten: 9
-}
-
-// Zählt eindeutige Bestätiger (ohne self)
-function countUniqueConfirmersForTarget(st, targetIdx){
-  const set = new Set();
-  const confs = Array.isArray(st?.confirmations) ? st.confirmations : [];
-
-  for (const c of confs) {
-    if (!c) continue;
-    if (Number(c.idx) !== Number(targetIdx)) continue;
-
-    const by = Number(c.byFriendIdx);
-    if (!Number.isFinite(by)) continue;
-    if (by === Number(targetIdx)) continue; // Self zählt nicht
-
-    set.add(by);
-  }
-  return set.size;
-}
-
-// Berechnet confirmed[] komplett aus confirmations[]
-function recomputeConfirmedFromConfirmations(st){
-  const n = app.friends.length;
+  const st = app.cloud.room?.state || {};
   const need = requiredConfirmersCount();
-  const out = Array(n).fill(false);
 
-  for (let i = 0; i < n; i++) {
-    out[i] = countUniqueConfirmersForTarget(st, i) >= need;
-  }
-  return out;
+  const g=document.createElement("div");
+  g.className="grid";
+
+  app.friends.forEach((name, idx) => {
+    const got = countUniqueConfirmersForTarget(st, idx);
+    const done = got >= need;
+
+    const c=document.createElement("div");
+    c.className="cell" + (done ? " done" : "");
+    c.innerHTML=`
+      <div class="emoji">${done ? "✅" : "🔥"}</div>
+      <div class="name">${escapeHtml(name)}</div>
+      <div class="hint">${done ? "Bestätigt" : `${got}/${need} bestätigt`}</div>
+    `;
+    c.onclick=()=>openRequestDialog(idx);
+    g.appendChild(c);
+  });
+
+  viewEl.innerHTML="";
+  viewEl.appendChild(g);
 }
-
-/* ================= SUPABASE HELPERS ================= */
-function applyRoom(room){
-  app.cloud.room = room || null;
-  const st = room?.state || {};
-
-  // ❗ confirmed wird jetzt IMMER berechnet (nicht mehr blind aus DB gelesen)
-  app.cloud.confirmed = recomputeConfirmedFromConfirmations(st);
-}
-
 
 /* ================= CONFIRM (mit Kamera-Scan + iOS-Fallback) ================= */
 function renderConfirm(){
@@ -386,11 +365,9 @@ function renderConfirm(){
 
     cameraSelect.innerHTML = cams.map((c, idx) => {
       const label = c.label || `Kamera ${idx+1}`;
-      // deviceId nicht escapen (ist kein HTML), aber label escapen:
       return `<option value="${c.deviceId}">${escapeHtml(label)}</option>`;
     }).join("");
 
-    // versuch, Rückkamera vorzuwählen
     const back = cams.find(c => /back|rear|rück|environment/i.test(c.label));
     if (back) cameraSelect.value = back.deviceId;
   }
@@ -453,7 +430,7 @@ function renderConfirm(){
 
     if (!hasBarcodeDetector) {
       scanHintEl.textContent = "iOS Safari: QR-Scan läuft über Fallback (jsQR). QR kurz ruhig halten 🙂";
-      setScanError(""); // kein Fehler anzeigen
+      setScanError("");
     }
 
     const tick = async () => {
@@ -461,7 +438,6 @@ function renderConfirm(){
 
       try {
         if (videoEl.readyState >= 2) {
-          // --- Versuch 1: BarcodeDetector ---
           if (detector) {
             const codes = await detector.detect(videoEl);
             if (codes && codes.length) {
@@ -480,11 +456,9 @@ function renderConfirm(){
               }
             }
           } else {
-            // --- Versuch 2: jsQR ---
             const w = videoEl.videoWidth;
             const h = videoEl.videoHeight;
             if (w && h) {
-              // Performance-Boost für iPhone: kleiner auswerten
               const scale = 0.6;
               canvas.width = Math.floor(w * scale);
               canvas.height = Math.floor(h * scale);
@@ -520,8 +494,7 @@ function renderConfirm(){
 
     requestAnimationFrame(tick);
 
-    // Nach Kamera-Permission sind Labels i.d.R. erst verfügbar:
-    // daher Kameraliste nach Start nochmal aktualisieren.
+    // Nach Permission Labels neu laden
     try { await listCameras(); } catch {}
   }
 
@@ -543,103 +516,93 @@ function renderConfirm(){
     }
   };
 
-  // Kamera-Liste initial laden (Labels evtl. leer bis Permission)
   listCameras().catch(console.warn);
 
   // Bestätigen (Supabase) – Grün erst bei 9/9 (ohne self), 1x pro Bestätiger/Ziel
-btnEl.onclick = async () => {
-  try {
-    const raw = tokenEl.value.trim();
-    const pin = pinEl.value.trim();
-    const visitorIdx = Number(friendEl.value);
+  btnEl.onclick = async () => {
+    try {
+      const raw = tokenEl.value.trim();
+      const pin = pinEl.value.trim();
+      const visitorIdx = Number(friendEl.value);
 
-    if (!raw) return alert("Bitte Besucher-Code einfügen.");
-    if (!pin) return alert("Bitte PIN eingeben.");
+      if (!raw) return alert("Bitte Besucher-Code einfügen.");
+      if (!pin) return alert("Bitte PIN eingeben.");
 
-    const parts = raw.split("|");
-    if (parts.length !== 4) return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
+      const parts = raw.split("|");
+      if (parts.length !== 4) return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce).");
 
-    const roomId = parts[0];
-    const targetIdx = Number(parts[2]);
-    const nonce = parts[3];
+      const roomId = parts[0];
+      const targetIdx = Number(parts[2]);
+      const nonce = parts[3];
 
-    if (!roomId) return alert("Token: room fehlt.");
-    if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9) return alert("Token: idx ungültig.");
-    if (!nonce) return alert("Token: nonce fehlt.");
+      if (!roomId) return alert("Token: room fehlt.");
+      if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9) return alert("Token: idx ungültig.");
+      if (!nonce) return alert("Token: nonce fehlt.");
 
-    // Room laden
-    const { data: room, error } = await sb
-      .from(TABLE)
-      .select("*")
-      .eq("room_id", roomId)
-      .maybeSingle();
+      const { data: room, error } = await sb
+        .from(TABLE)
+        .select("*")
+        .eq("room_id", roomId)
+        .maybeSingle();
 
-    if (error) throw error;
-    if (!room || !room.state) return alert("Room nicht gefunden oder ohne State. Host: Setup → Speichern.");
+      if (error) throw error;
+      if (!room || !room.state) return alert("Room nicht gefunden oder ohne State. Host: Setup → Speichern.");
 
-    const st = room.state || {};
-    st.pins = Array.isArray(st.pins) ? st.pins : [];
-    st.confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
+      const st = room.state || {};
+      st.pins = Array.isArray(st.pins) ? st.pins : [];
+      st.confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
 
-    // PIN prüfen
-    if (String(st.pins?.[visitorIdx] ?? "").trim() !== String(pin).trim()) {
-      return alert("Falsche PIN.");
+      if (String(st.pins?.[visitorIdx] ?? "").trim() !== String(pin).trim()) {
+        return alert("Falsche PIN.");
+      }
+
+      if (visitorIdx === targetIdx) {
+        return alert("Du kannst dich nicht selbst bestätigen 🙂");
+      }
+
+      if (st.confirmations.some(x => x && x.nonce === nonce)) {
+        return alert("Dieser Code wurde bereits verwendet.");
+      }
+
+      if (st.confirmations.some(x => x && Number(x.idx) === targetIdx && Number(x.byFriendIdx) === visitorIdx)) {
+        return alert("Du hast diese Person schon bestätigt ✅");
+      }
+
+      st.confirmations.push({
+        idx: targetIdx,
+        byFriendIdx: visitorIdx,
+        byName: app.friends[visitorIdx],
+        nonce,
+        at: nowIso()
+      });
+
+      st.confirmed = recomputeConfirmedFromConfirmations(st);
+      st.updatedAt = nowIso();
+
+      const { data: updated, error: updErr } = await sb
+        .from(TABLE)
+        .update({ state: st })
+        .eq("room_id", roomId)
+        .select("*")
+        .single();
+
+      if (updErr) throw updErr;
+
+      applyRoom(updated);
+
+      const need = requiredConfirmersCount();
+      const got = countUniqueConfirmersForTarget(updated.state, targetIdx);
+
+      if (got >= need) alert("Bestätigung gespeichert ✅ Ziel ist jetzt grün!");
+      else alert(`Bestätigung gespeichert ✅ (${got}/${need})`);
+
+      setView("board");
+    } catch (e) {
+      console.error(e);
+      alert("Fehler beim Bestätigen: " + (e?.message || e));
     }
-
-    // Self-Confirm blocken (du wolltest: er selber muss sich nicht bestätigen)
-    if (visitorIdx === targetIdx) {
-      return alert("Du kannst dich nicht selbst bestätigen 🙂");
-    }
-
-    // QR-Code (nonce) nur einmal verwendbar
-    if (st.confirmations.some(x => x && x.nonce === nonce)) {
-      return alert("Dieser Code wurde bereits verwendet.");
-    }
-
-    // Eine Person darf ein Ziel nur 1x bestätigen
-    if (st.confirmations.some(x => x && Number(x.idx) === targetIdx && Number(x.byFriendIdx) === visitorIdx)) {
-      return alert("Du hast diese Person schon bestätigt ✅");
-    }
-
-    // Bestätigung hinzufügen
-    st.confirmations.push({
-      idx: targetIdx,
-      byFriendIdx: visitorIdx,
-      byName: app.friends[visitorIdx],
-      nonce,
-      at: nowIso()
-    });
-
-    // ✅ confirmed wird neu berechnet (grün erst bei 9 eindeutigen Bestätigern)
-    st.confirmed = recomputeConfirmedFromConfirmations(st);
-    st.updatedAt = nowIso();
-
-    const { data: updated, error: updErr } = await sb
-      .from(TABLE)
-      .update({ state: st })
-      .eq("room_id", roomId)
-      .select("*")
-      .single();
-
-    if (updErr) throw updErr;
-
-    applyRoom(updated);
-
-    const need = requiredConfirmersCount();
-    const got = countUniqueConfirmersForTarget(updated.state, targetIdx);
-
-    if (got >= need) {
-      alert("Bestätigung gespeichert ✅ Ziel ist jetzt grün!");
-    } else {
-      alert(`Bestätigung gespeichert ✅ (${got}/${need})`);
-    }
-
-    setView("board");
-  } catch (e) {
-    console.error(e);
-    alert("Fehler beim Bestätigen: " + (e?.message || e));
-  }
-};
+  };
+} // <-- renderConfirm Ende (wichtig!)
 
 /* ================= LEADERBOARD ================= */
 function renderLeaderboard(){
@@ -648,10 +611,8 @@ function renderLeaderboard(){
   const room = app.cloud.room;
   const st = room?.state || {};
 
-  const confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10
-    ? st.confirmed
-    : Array(10).fill(false);
-
+  // ✅ Status immer aus confirmations berechnen
+  const confirmed = recomputeConfirmedFromConfirmations(st);
   const confirmations = Array.isArray(st.confirmations) ? st.confirmations : [];
 
   const scoreByName = new Map();
@@ -717,7 +678,7 @@ function renderHelp(){
 
       <div style="font-weight:900">🔥 Worum geht’s?</div>
       <p class="sub">
-        Der Host grillt und trinkt Bier.  
+        Der Host grillt und trinkt Bier.
         Du bestätigst das Ganze ehrlich per QR-Code.
         Keine Accounts. Kein Login. Nur Wahrheit und Hopfen.
       </p>
@@ -726,7 +687,7 @@ function renderHelp(){
 
       <div style="font-weight:900">📷 Schritt 1: Bestätigen öffnen</div>
       <p class="sub">
-        Öffne den Reiter <b>„Bestätigen“</b>.  
+        Öffne den Reiter <b>„Bestätigen“</b>.
         Dort wartet schon der QR-Scanner auf dich.
       </p>
 
@@ -739,19 +700,19 @@ function renderHelp(){
 
       <div style="font-weight:900">🧑‍🤝‍🧑 Schritt 3: Sag, wer du bist</div>
       <p class="sub">
-        Wähle <b>deinen Namen</b> aus der Liste.  
+        Wähle <b>deinen Namen</b> aus der Liste.
         Ehrlichkeit zahlt sich aus. Früher oder später.
       </p>
 
       <div style="font-weight:900">🔐 Schritt 4: PIN eingeben</div>
       <p class="sub">
-        Gib deinen <b>PIN</b> ein.  
+        Gib deinen <b>PIN</b> ein.
         Falscher PIN = kein Häkchen = schlechtes Karma.
       </p>
 
       <div style="font-weight:900">✅ Schritt 5: Bestätigen</div>
       <p class="sub">
-        Tippe auf <b>„Bestätigen“</b>.  
+        Tippe auf <b>„Bestätigen“</b>.
         Wenn alles passt: 🎉 Erfolg!
       </p>
 
@@ -769,13 +730,12 @@ function renderHelp(){
 
       <div style="font-weight:900">🍺 Fazit</div>
       <p class="sub">
-        Scannen. PIN. Bestätigen.  
+        Scannen. PIN. Bestätigen.
         Danach wieder zurück zu den wichtigen Dingen im Leben.
       </p>
     </div>
   `;
 }
-
 
 /* ================= SETTINGS ================= */
 function renderSettings(){
@@ -866,6 +826,7 @@ function renderSettings(){
       const nextState = {
         friends: app.friends.slice(),
         pins: app.pins.slice(),
+        // confirmed kann drin stehen (für Backward), aber Anzeige wird ohnehin berechnet
         confirmed:
           Array.isArray(prev.confirmed) && prev.confirmed.length === 10
             ? prev.confirmed
