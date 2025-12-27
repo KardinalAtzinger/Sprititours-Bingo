@@ -238,63 +238,10 @@ function renderBoard(){
   viewEl.appendChild(g);
 }
 
-/* ================= CONFIRM (mit Kamera-Scan + iOS-Fallback) ================= */
-function renderConfirm(){
-  statusEl.textContent = "Bestätigen";
-
-  // Falls neu gerendert wird: Scanner sauber stoppen
-  stopScannerIfRunning?.();
-
-  viewEl.innerHTML = `
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="font-weight:900;font-size:16px">QR-Scan</div>
-        <div class="row">
-          <button class="btn" id="scanStartBtn">Kamera starten</button>
-          <button class="btn danger" id="scanStopBtn" style="display:none">Stop</button>
-        </div>
-      </div>
-
-      <div class="sub" id="scanHint" style="margin-top:6px">
-        Kamera starten → QR ins Bild halten → Code wird automatisch eingefügt.
-      </div>
-
-      <div id="scanErr"
-           style="display:none;margin:10px 0;padding:10px;border-radius:12px;border:1px solid var(--badb);background:var(--bad)">
-      </div>
-
-      <label style="margin-top:12px">Kamera auswählen</label>
-      <select id="cameraSelect">
-        <option value="">(Kamera wird geladen…)</option>
-      </select>
-
-      <div style="margin-top:10px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#000">
-        <video id="scanVideo" playsinline muted style="width:100%;display:block"></video>
-      </div>
-
-      <hr />
-
-      <label>Besucher-Code</label>
-      <input id="visitorToken"
-             value="${escapeHtml(app.ui.confirmDraft.visitorToken)}"
-             placeholder="room|playerId|idx|nonce">
-
-      <label>Welcher Kumpel bin ich?</label>
-      <select id="friendIdx">
-        ${app.friends.map((n,i)=>`
-          <option value="${i}" ${i===app.ui.confirmDraft.friendIdx?"selected":""}>
-            ${escapeHtml(n)}
-          </option>`).join("")}
-      </select>
-
-      <label>PIN</label>
-      <input id="pin"
-             inputmode="numeric"
-             autocomplete="one-time-code"
-             value="${escapeHtml(app.ui.confirmDraft.pin)}"
-             placeholder="z.B. 1234">
-
-      <button class="btn" id="confirmBt
+/* ================= CONFIRM (mit Kamera-Scan) ================= */ 
+  function renderConfirm(){ statusEl.textContent = "Bestätigen"; 
+                           // falls nochmal gerendert wird: alten Scan stoppen stopScannerIfRunning(); 
+viewEl.innerHTML = <div class="card"> <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"> <div style="font-weight:900;font-size:16px">QR-Scan</div> <div class="row"> <button class="btn" id="scanStartBtn">Kamera starten</button> <button class="btn danger" id="scanStopBtn" style="display:none">Stop</button> </div> </div> <div class="sub" id="scanHint" style="margin-top:6px"> Kamera starten → QR ins Bild halten → Code wird automatisch eingefügt. </div> <div id="scanErr" style="display:none;margin:10px 0;padding:10px;border-radius:12px;border:1px solid var(--badb);background:var(--bad)"></div> <label style="margin-top:12px">Kamera auswählen</label> <select id="cameraSelect"> <option value="">(Kamera wird geladen…)</option> </select> <div style="margin-top:10px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#000"> <video id="scanVideo" playsinline muted style="width:100%;height:auto;display:block"></video> </div> <hr /> <label>Besucher-Code</label> <input id="visitorToken" value="${escapeHtml(app.ui.confirmDraft.visitorToken)}" placeholder="room|playerId|idx|nonce"> <label>Welcher Kumpel bin ich?</label> <select id="friendIdx"> ${app.friends.map((n,i)=><option value="${i}" ${i===app.ui.confirmDraft.friendIdx?"selected":""}>${escapeHtml(n)}</option>).join("")} </select> <label>PIN</label> <input id="pin" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.ui.confirmDraft.pin)}" placeholder="z.B. 1234"> <button class="btn" id="confirmBtn" style="margin-top:12px">Bestätigen</button> </div> ; const tokenEl = document.getElementById("visitorToken"); const pinEl = document.getElementById("pin"); const friendEl = document.getElementById("friendIdx"); const btnEl = document.getElementById("confirmBtn"); const scanErrEl = document.getElementById("scanErr"); const scanHintEl = document.getElementById("scanHint"); const scanStartBtn = document.getElementById("scanStartBtn"); const scanStopBtn = document.getElementById("scanStopBtn"); const cameraSelect = document.getElementById("cameraSelect"); const videoEl = document.getElementById("scanVideo"); function setScanError(msg){ scanErrEl.style.display = msg ? "block" : "none"; scanErrEl.textContent = msg || ""; } tokenEl.addEventListener("input", () => { app.ui.confirmDraft.visitorToken = tokenEl.value; saveLocal(); }); pinEl.addEventListener("input", () => { app.ui.confirmDraft.pin = pinEl.value; saveLocal(); }); friendEl.addEventListener("change",() => { app.ui.confirmDraft.friendIdx = Number(friendEl.value); saveLocal(); }); async function listCameras(){ if (!navigator.mediaDevices?.enumerateDevices) { cameraSelect.innerHTML = <option value="">(nicht unterstützt)</option>; return; } const devices = await navigator.mediaDevices.enumerateDevices(); const cams = devices.filter(d => d.kind === "videoinput"); if (!cams.length) { cameraSelect.innerHTML = <option value="">(keine Kamera gefunden)</option>; return; } cameraSelect.innerHTML = cams.map((c, idx) => { const label = c.label || Kamera ${idx+1}; return <option value="${escapeHtml(c.deviceId)}">${escapeHtml(label)}</option>; }).join(""); const back = cams.find(c => /back|rear|rück/i.test(c.label)); if (back) cameraSelect.value = back.deviceId; } function stopStream(stream){ if (!stream) return; stream.getTracks().forEach(t => { try { t.stop(); } catch {} }); } async function startScanner(deviceId){ setScanError(""); if (!window.isSecureContext) { setScanError("Kamera benötigt https (oder localhost)."); return; } if (!navigator.mediaDevices?.getUserMedia) { setScanError("getUserMedia wird von diesem Browser nicht unterstützt."); return; } if (!("BarcodeDetector" in window)) { scanHintEl.textContent = "Hinweis: QR-Scan wird in diesem Browser nicht unterstützt. Du kannst den Code weiterhin manuell einfügen."; setScanError("Kein BarcodeDetector verfügbar."); return; } const detector = new BarcodeDetector({ formats: ["qr_code"] }); const constraints = deviceId ? { video: { deviceId: { exact: deviceId } }, audio: false } : { video: { facingMode: { ideal: "environment" } }, audio: false }; let stream; try { stream = await navigator.mediaDevices.getUserMedia(constraints); } catch (e) { console.error(e); setScanError("Kamerazugriff verweigert oder nicht verfügbar."); return; } videoEl.srcObject = stream; try { await videoEl.play(); } catch {} scanStartBtn.style.display = "none"; scanStopBtn.style.display = "inline-block"; let running = true; app.ui._scan = { stop: () => { running = false; stopStream(stream); videoEl.srcObject = null; scanStartBtn.style.display = "inline-block"; scanStopBtn.style.display = "none"; } }; const tick = async () => { if (!running) return; try { if (videoEl.readyState >= 2) { const codes = await detector.detect(videoEl); if (codes && codes.length) { const value = (codes[0].rawValue || "").trim(); if (value) { tokenEl.value = value; app.ui.confirmDraft.visitorToken = value; saveLocal(); scanHintEl.textContent = "QR erkannt ✅ Code wurde eingefügt."; setScanError(""); // Auto-Stop nach Treffer app.ui._scan.stop(); app.ui._scan = null; return; } } } } catch (e) { // Scanner kann sporadisch werfen – ignorieren console.warn(e); } requestAnimationFrame(tick); }; requestAnimationFrame(tick); } scanStartBtn.onclick = async () => { setScanError(""); await startScanner(cameraSelect.value || ""); try { await listCameras(); } catch {} }; scanStopBtn.onclick = () => { stopScannerIfRunning(); scanHintEl.textContent = "Scan gestoppt."; }; cameraSelect.onchange = async () => { if (app.ui._scan?.stop) { stopScannerIfRunning(); await startScanner(cameraSelect.value || ""); } }; listCameras().catch(console.warn); // Bestätigen (Supabase) btnEl.onclick = async () => { try { const raw = tokenEl.value.trim(); const pin = pinEl.value.trim(); const visitorIdx = Number(friendEl.value); if (!raw) return alert("Bitte Besucher-Code einfügen."); if (!pin) return alert("Bitte PIN eingeben."); const parts = raw.split("|"); if (parts.length !== 4) return alert("Ungültiger Besucher-Code (room|playerId|idx|nonce)."); const roomId = parts[0]; const targetIdx = Number(parts[2]); const nonce = parts[3]; if (!roomId) return alert("Token: room fehlt."); if (!Number.isFinite(targetIdx) || targetIdx < 0 || targetIdx > 9) return alert("Token: idx ungültig."); if (!nonce) return alert("Token: nonce fehlt."); const { data: room, error } = await sb .from(TABLE) .select("*") .eq("room_id", roomId) .maybeSingle(); if (error) throw error; if (!room || !room.state) return alert("Room nicht gefunden oder ohne State. Host: Setup → Speichern."); const st = room.state || {}; st.pins = Array.isArray(st.pins) ? st.pins : []; st.confirmed = Array.isArray(st.confirmed) && st.confirmed.length === 10 ? st.confirmed : Array(10).fill(false); st.confirmations = Array.isArray(st.confirmations) ? st.confirmations : []; if (String(st.pins?.[visitorIdx] ?? "").trim() !== String(pin).trim()) return alert("Falsche PIN."); if (st.confirmations.some(x => x && x.nonce === nonce)) return alert("Dieser Code wurde bereits verwendet."); if (st.confirmed[targetIdx]) { alert("Schon bestätigt ✅"); return setView("board"); } st.confirmed[targetIdx] = true; st.confirmations.push({ idx: targetIdx, byFriendIdx: visitorIdx, byName: app.friends[visitorIdx], nonce, at: nowIso() }); st.updatedAt = nowIso(); const { data: updated, error: updErr } = await sb .from(TABLE) .update({ state: st }) .eq("room_id", roomId) .select("*") .single(); if (updErr) throw updErr; applyRoom(updated); alert("Bestätigung gespeichert ✅"); setView("board"); } catch (e) { console.error(e); alert("Fehler beim Bestätigen: " + (e?.message || e)); } }; }
 
 /* ================= LEADERBOARD ================= */
 function renderLeaderboard(){
