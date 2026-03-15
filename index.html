@@ -147,8 +147,8 @@ const statusEl=document.getElementById("status");
 const dlgRequest=document.getElementById("dlgRequest");
 
 function escapeHtml(s){
-  return String(s||"").replace(/[&<>"']/g,c=>(
-    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
+  return String(s||"").replace(/[&<>\"']/g,c=>(
+    {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]
   ));
 }
 function nowIso(){ return new Date().toISOString(); }
@@ -243,13 +243,54 @@ function ensureRealtime(){
 async function syncRoom(){
   if(!app.roomId) return;
   try{
+    statusEl.textContent = "Synchronisiere...";
     const room = await fetchRoom(app.roomId);
     if(room) applyRoom(room);
     ensureRealtime();
+    render();
+    statusEl.textContent = "Aktualisiert ✓";
+    // nach kurzer Zeit wieder auf normalen Status zurück
+    setTimeout(()=>{ if(statusEl.textContent === "Aktualisiert ✓") statusEl.textContent = app.roomId ? `Board • Room: ${app.roomId}` : "—"; }, 2000);
   }catch(e){
     console.warn("syncRoom failed:", e);
+    statusEl.textContent = "Sync Fehler";
   }
 }
+
+// --- Auto-Sync: alle 10 Sekunden ---
+(function startAutoSync(){
+  const AUTO_SYNC_INTERVAL_MS = 10000; // 10s
+  // nur starten, wenn window verfügbar
+  if (typeof window === 'undefined') return;
+
+  // Startet das Intervall nur einmal
+  if (app.ui._autoSyncStarted) return;
+  app.ui._autoSyncStarted = true;
+
+  // führe initialen Sync aus (falls noch nicht) und setze Intervall
+  try { if (app.roomId) syncRoom(); } catch (e) {}
+
+  app.ui._autoSyncId = setInterval(() => {
+    if (!app.roomId) return;
+    // vermeide doppelte parallele syncs: einfache Lock
+    if (app.ui._syncRunning) return;
+    app.ui._syncRunning = true;
+    Promise.resolve()
+      .then(() => syncRoom())
+      .catch(()=>{})
+      .finally(()=> { app.ui._syncRunning = false; });
+  }, AUTO_SYNC_INTERVAL_MS);
+
+  // Wenn Tab sichtbar wird, sync sofort
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && app.roomId) syncRoom();
+  });
+
+  // Clean up beim Unload
+  window.addEventListener('beforeunload', () => {
+    if (app.ui._autoSyncId) clearInterval(app.ui._autoSyncId);
+  });
+})();
 
 /* ================= BOARD ================= */
 function renderBoard(){
@@ -642,273 +683,5 @@ function renderLeaderboard(){
     <div class="card" style="margin-bottom:12px">
       <div style="font-weight:900;margin-bottom:8px">Punkte (Bestätigungen vergeben)</div>
       ${rows.map((r, i) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
-          <div style="display:flex;gap:10px;align-items:center">
-            <div style="width:26px;text-align:center;font-weight:900;color:var(--muted)">${i+1}.</div>
-            <div style="font-weight:800">${escapeHtml(r.name)}</div>
-          </div>
-          <div style="font-weight:900">${r.score}</div>
-        </div>
-      `).join("")}
-    </div>
-
-    <div class="card">
-      <div style="font-weight:900;margin-bottom:8px">Status (wer ist schon bestätigt?)</div>
-      ${app.friends.map((name, idx) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">
-          <div style="font-weight:800">${escapeHtml(name)}</div>
-          <div style="font-weight:900">${confirmed[idx] ? "✅" : "—"}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)">`
 }
-
-/* ================= HELP / ANLEITUNG ================= */
-function renderHelp(){
-  statusEl.textContent = "Anleitung";
-
-  viewEl.innerHTML = `
-    <div class="card">
-      <div style="font-weight:900;font-size:20px">🍻 Bier-Bingo – Anleitung</div>
-      <div class="sub" style="margin-top:6px">
-        Lesen dauert kürzer als dein nächstes Bier.
-      </div>
-
-      <hr />
-
-      <div style="font-weight:900">🔥 Worum geht’s?</div>
-      <p class="sub">
-        Der Host grillt und trinkt Bier.
-        Du bestätigst das Ganze ehrlich per QR-Code.
-        Keine Accounts. Kein Login. Nur Wahrheit und Hopfen.
-      </p>
-
-      <hr />
-
-      <div style="font-weight:900">📷 Schritt 1: Bestätigen öffnen</div>
-      <p class="sub">
-        Öffne den Reiter <b>„Bestätigen“</b>.
-        Dort wartet schon der QR-Scanner auf dich.
-      </p>
-
-      <div style="font-weight:900">📸 Schritt 2: QR-Code scannen</div>
-      <p class="sub">
-        • Tippe auf <b>„Kamera starten“</b><br>
-        • Halte dein Handy ruhig auf den QR-Code vom Host<br>
-        • Wackeln erst nach dem Scan 🍺
-      </p>
-
-      <div style="font-weight:900">🧑‍🤝‍🧑 Schritt 3: Sag, wer du bist</div>
-      <p class="sub">
-        Wähle <b>deinen Namen</b> aus der Liste.
-        Ehrlichkeit zahlt sich aus. Früher oder später.
-      </p>
-
-      <div style="font-weight:900">🔐 Schritt 4: PIN eingeben</div>
-      <p class="sub">
-        Gib deinen <b>PIN</b> ein.
-        Falscher PIN = kein Häkchen = schlechtes Karma.
-      </p>
-
-      <div style="font-weight:900">✅ Schritt 5: Bestätigen</div>
-      <p class="sub">
-        Tippe auf <b>„Bestätigen“</b>.
-        Wenn alles passt: 🎉 Erfolg!
-      </p>
-
-      <hr />
-
-      <div style="font-weight:900">🏆 Rangliste</div>
-      <p class="sub">
-        Zeigt live:
-        • wer schon bestätigt ist<br>
-        • wer fleißig scannt<br>
-        • wer sich noch drückt 👀
-      </p>
-
-      <hr />
-
-      <div style="font-weight:900">🍺 Fazit</div>
-      <p class="sub">
-        Scannen. PIN. Bestätigen.
-        Danach wieder zurück zu den wichtigen Dingen im Leben.
-      </p>
-    </div>
-  `;
-}
-
-/* ================= SETTINGS ================= */
-function renderSettings(){
-  statusEl.textContent = "Setup";
-
-  viewEl.innerHTML = `
-    <div class="card">
-      <div style="font-weight:900;font-size:18px">Setup</div>
-      <div class="sub" style="margin-top:6px">
-        Host: Name + Room-Code setzen, dann Speichern (schreibt state.pins/confirmed in Supabase).
-      </div>
-
-      <label>Dein Name</label>
-      <input id="meName" value="${escapeHtml(app.me.name)}" placeholder="z.B. Franz">
-
-      <label>Room-Code</label>
-      <input id="roomId" value="${escapeHtml(app.roomId)}" placeholder="z.B. sprititours2026">
-
-      <div class="row" style="margin-top:12px">
-        <button class="btn" id="saveSetup" style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.6)">
-          Speichern
-        </button>
-        <button class="btn danger" id="resetSetup">Reset lokal</button>
-      </div>
-
-      <hr />
-
-      <div style="font-weight:900">Gastgeber-PINs</div>
-      <div class="sub" style="margin-top:6px">
-        Bleibt lokal auf deinem Gerät.
-      </div>
-
-      <div id="pins"></div>
-    </div>
-  `;
-
-  const pinsWrap = document.getElementById("pins");
-  const frag = document.createDocumentFragment();
-
-  app.friends.forEach((name, i) => {
-    const block = document.createElement("div");
-    block.innerHTML = `
-      <label>${escapeHtml(name)} – PIN</label>
-      <input id="pin_${i}" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(app.pins[i])}">
-    `;
-    frag.appendChild(block);
-  });
-
-  pinsWrap.appendChild(frag);
-
-  app.friends.forEach((_, i) => {
-    const el = document.getElementById("pin_" + i);
-    el.addEventListener("input", () => {
-      const v = el.value;
-      requestAnimationFrame(() => { app.pins[i] = v; });
-    });
-  });
-
-  document.getElementById("saveSetup").onclick = async () => {
-    const meName = document.getElementById("meName").value.trim();
-    const roomId = document.getElementById("roomId").value.trim();
-
-    if (!meName || !roomId) {
-      alert("Bitte Name und Room-Code setzen.");
-      return;
-    }
-
-    app.me.name = meName;
-    app.roomId = roomId;
-
-    for (let i = 0; i < 10; i++) {
-      const p = (document.getElementById("pin_" + i)?.value || "").trim();
-      app.pins[i] = p || "1234";
-    }
-
-    saveLocal();
-
-    try {
-      const { data: existing, error: selErr } = await sb
-        .from(TABLE)
-        .select("state")
-        .eq("room_id", app.roomId)
-        .maybeSingle();
-
-      if (selErr) throw selErr;
-      const prev = existing?.state || {};
-
-      const nextState = {
-        friends: app.friends.slice(),
-        pins: app.pins.slice(),
-        // confirmed kann drin stehen (für Backward), aber Anzeige wird ohnehin berechnet
-        confirmed:
-          Array.isArray(prev.confirmed) && prev.confirmed.length === 10
-            ? prev.confirmed
-            : Array(10).fill(false),
-        confirmations: Array.isArray(prev.confirmations) ? prev.confirmations : [],
-        updatedAt: nowIso()
-      };
-
-      const { data: upserted, error: upErr } = await sb
-        .from(TABLE)
-        .upsert({ room_id: app.roomId, state: nextState }, { onConflict: "room_id" })
-        .select("*")
-        .single();
-
-      if (upErr) throw upErr;
-
-      applyRoom(upserted);
-
-      if (app.cloud.sub) {
-        try { await sb.removeChannel(app.cloud.sub); } catch {}
-        app.cloud.sub = null;
-      }
-      ensureRealtime();
-
-      alert("Setup gespeichert – Room ist jetzt aktiv ✅");
-      render();
-    } catch (e) {
-      console.error(e);
-      alert("Fehler beim Setup-Speichern: " + (e?.message || e));
-      render();
-    }
-  };
-
-  document.getElementById("resetSetup").onclick = () => {
-    if (!confirm("Lokale Daten (Name, Room, PINs) zurücksetzen?")) return;
-    localStorage.removeItem(LOCAL_KEY);
-    location.reload();
-  };
-}
-
-/* ================= QR (Host erzeugt Token) ================= */
-function openRequestDialog(idx){
-  const err=document.getElementById("reqError");
-  const qr=document.getElementById("qr");
-  const code=document.getElementById("reqCode");
-  const go=document.getElementById("reqGoSetup");
-
-  err.style.display="none";qr.innerHTML="";code.textContent="";go.style.display="none";
-
-  if(!app.roomId||!app.me.name){
-    err.style.display="block";
-    err.innerHTML="Bitte Name & Room-Code im Setup setzen.";
-    go.style.display="inline-block";
-    go.onclick=()=>{dlgRequest.close();setView("settings")};
-    dlgRequest.showModal();
-    return;
-  }
-
-  const token=`${app.roomId}|${app.me.playerId}|${idx}|${Math.random().toString(16).slice(2,8)}`;
-  new QRCode(qr,{text:token,width:220,height:220});
-  code.textContent=token;
-  dlgRequest.showModal();
-}
-
-/* ================= RENDER ================= */
-function render(){
-  if(app.ui.view==="board") renderBoard();
-  else if(app.ui.view==="confirm") renderConfirm();
-  else if(app.ui.view==="leaderboard") renderLeaderboard();
-  else if(app.ui.view==="settings") renderSettings();
-  else if(app.ui.view==="help") renderHelp();
-  else viewEl.innerHTML="";
-}
-
-render();
-
-const versionEl = document.getElementById("version");
-if (versionEl) versionEl.textContent = "Version " + APP_VERSION;
-
-syncRoom();
-</script>
-
-</body>
-</html>
