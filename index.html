@@ -246,6 +246,7 @@ async function syncRoom(){
     const room = await fetchRoom(app.roomId);
     if(room) applyRoom(room);
     ensureRealtime();
+    render();
   }catch(e){
     console.warn("syncRoom failed:", e);
   }
