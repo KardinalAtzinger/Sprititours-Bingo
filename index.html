@@ -63,6 +63,7 @@
     <button class="pill" onclick="setView('leaderboard')">Rangliste</button>
     <button class="pill" onclick="setView('settings')">Setup</button>
     <button class="pill" onclick="setView('help')">Anleitung</button>
+    <button class="pill" onclick="syncRoom()">🔄 Aktualisieren</button>
   </div>
 </header>
 
@@ -89,7 +90,7 @@
 const SUPABASE_URL = "https://hyjydhxamcbeytlvzdnd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_zASMa14T4TduXXR3MDaq6g_XrfmsFdx";
 const TABLE = "bier_bingo_rooms";
-const APP_VERSION = "1.0.7";
+const APP_VERSION = "1.0.8";
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
